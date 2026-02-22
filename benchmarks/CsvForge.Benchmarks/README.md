@@ -9,6 +9,8 @@ This benchmark project compares CsvForge serialization engines using the same da
 
 The engine matrix is implemented in `GeneratorEngineMatrixBenchmarks`.
 
+`CsvSerializationBenchmarks` also includes compression-path scenarios (`CsvCompressionMode.Gzip` and `CsvCompressionMode.Zip`) for both sync and async stream output.
+
 ## Scale and scenario matrix
 
 `GeneratorEngineMatrixBenchmarks` runs the following row scales:

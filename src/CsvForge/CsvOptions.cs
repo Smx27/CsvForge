@@ -38,6 +38,13 @@ public enum CsvUnionAsyncBehavior
     FirstShapeLock
 }
 
+public enum CsvCompressionMode
+{
+    None,
+    Gzip,
+    Zip
+}
+
 public sealed class CsvOptions
 {
     public static CsvOptions Default { get; } = new();
@@ -73,6 +80,11 @@ public sealed class CsvOptions
     /// This fallback is intended for non-AOT scenarios. Keep this option disabled in NativeAOT or trimmed applications and prefer generated writers.
     /// </remarks>
     public bool EnableRuntimeMetadataFallback { get; init; }
+
+    /// <summary>
+    /// Controls whether CSV output is written as plain text, GZip, or a single-entry ZIP archive.
+    /// </summary>
+    public CsvCompressionMode Compression { get; init; } = CsvCompressionMode.None;
 
     internal string NewLine => NewLineBehavior switch
     {
