@@ -6,6 +6,7 @@ using CsvForge;
 
 BenchmarkRunner.Run<CsvSerializationBenchmarks>();
 BenchmarkRunner.Run<DynamicCsvSerializationBenchmarks>();
+BenchmarkRunner.Run<GeneratorVsFallbackBenchmarks>();
 
 [MemoryDiagnoser]
 public class CsvSerializationBenchmarks
@@ -196,5 +197,88 @@ public class DynamicCsvSerializationBenchmarks
         using var writer = new StringWriter();
         CsvWriter.Write(_rows, writer, _firstShapeOptions);
         return writer.ToString();
+    }
+}
+
+
+[MemoryDiagnoser]
+public class GeneratorVsFallbackBenchmarks
+{
+    private SourceGeneratedRow[] _generatedRows = Array.Empty<SourceGeneratedRow>();
+    private ReflectionFallbackRow[] _fallbackRows = Array.Empty<ReflectionFallbackRow>();
+    private CsvOptions _generatedOptions = null!;
+    private CsvOptions _fallbackOptions = null!;
+
+    [Params(1_000, 10_000)]
+    public int RowCount { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        _generatedRows = new SourceGeneratedRow[RowCount];
+        _fallbackRows = new ReflectionFallbackRow[RowCount];
+
+        for (var i = 0; i < RowCount; i++)
+        {
+            var generated = new SourceGeneratedRow
+            {
+                Id = i,
+                Name = $"name-{i}",
+                IsActive = i % 2 == 0
+            };
+
+            _generatedRows[i] = generated;
+            _fallbackRows[i] = new ReflectionFallbackRow
+            {
+                Id = generated.Id,
+                Name = generated.Name,
+                IsActive = generated.IsActive
+            };
+        }
+
+        _generatedOptions = new CsvOptions
+        {
+            IncludeHeader = true,
+            NewLineBehavior = CsvNewLineBehavior.Lf,
+            EnableRuntimeMetadataFallback = false
+        };
+
+        _fallbackOptions = new CsvOptions
+        {
+            IncludeHeader = true,
+            NewLineBehavior = CsvNewLineBehavior.Lf,
+            EnableRuntimeMetadataFallback = true
+        };
+    }
+
+    [Benchmark]
+    public string SourceGeneratedWriter()
+    {
+        using var writer = new StringWriter();
+        CsvWriter.Write(_generatedRows, writer, _generatedOptions);
+        return writer.ToString();
+    }
+
+    [Benchmark]
+    public string RuntimeFallbackWriter()
+    {
+        using var writer = new StringWriter();
+        CsvWriter.Write(_fallbackRows, writer, _fallbackOptions);
+        return writer.ToString();
+    }
+
+    [CsvForge.Attributes.CsvSerializable]
+    public partial class SourceGeneratedRow
+    {
+        public int Id { get; init; }
+        public string Name { get; init; } = string.Empty;
+        public bool IsActive { get; init; }
+    }
+
+    public sealed class ReflectionFallbackRow
+    {
+        public int Id { get; init; }
+        public string Name { get; init; } = string.Empty;
+        public bool IsActive { get; init; }
     }
 }
