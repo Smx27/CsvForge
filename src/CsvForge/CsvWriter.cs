@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,16 +40,8 @@ public static class CsvWriter
         ArgumentNullException.ThrowIfNull(stream);
         options ??= CsvOptions.Default;
 
-        if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
-        {
-            var bufferWriter = new StreamBufferWriter(stream);
-            Utf8CsvWriter.Write(data, bufferWriter, options);
-            bufferWriter.Flush();
-            return;
-        }
-
-        using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
-        Utf16CsvWriter.Write(data, writer, options);
+        using var output = CreateOutputStream(stream, options, useAsync: false);
+        WriteToPreparedStream(data, output.Stream, options);
     }
 
     public static void Write<T>(IEnumerable<T> data, TextWriter writer, CsvOptions? options = null)
@@ -251,16 +244,8 @@ public static class CsvWriter
         ArgumentNullException.ThrowIfNull(stream);
         options ??= CsvOptions.Default;
 
-        if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
-        {
-            var bufferWriter = new StreamBufferWriter(stream);
-            await Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken).ConfigureAwait(false);
-            await bufferWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
-        await Utf16CsvWriter.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
+        await using var output = CreateOutputStream(stream, options, useAsync: true);
+        await WriteToPreparedStreamAsync(data, output.Stream, options, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task WriteAsyncEnumerableToPathAsync<T>(IAsyncEnumerable<T> data, string path, CsvOptions? options, CancellationToken cancellationToken)
@@ -277,6 +262,27 @@ public static class CsvWriter
         ArgumentNullException.ThrowIfNull(stream);
         options ??= CsvOptions.Default;
 
+        await using var output = CreateOutputStream(stream, options, useAsync: true);
+        await WriteToPreparedStreamAsync(data, output.Stream, options, cancellationToken).ConfigureAwait(false);
+    }
+
+
+    private static void WriteToPreparedStream<T>(IEnumerable<T> data, Stream stream, CsvOptions options)
+    {
+        if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
+        {
+            var bufferWriter = new StreamBufferWriter(stream);
+            Utf8CsvWriter.Write(data, bufferWriter, options);
+            bufferWriter.Flush();
+            return;
+        }
+
+        using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
+        Utf16CsvWriter.Write(data, writer, options);
+    }
+
+    private static async Task WriteToPreparedStreamAsync<T>(IEnumerable<T> data, Stream stream, CsvOptions options, CancellationToken cancellationToken)
+    {
         if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
         {
             var bufferWriter = new StreamBufferWriter(stream);
@@ -287,6 +293,96 @@ public static class CsvWriter
 
         await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
         await Utf16CsvWriter.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task WriteToPreparedStreamAsync<T>(IAsyncEnumerable<T> data, Stream stream, CsvOptions options, CancellationToken cancellationToken)
+    {
+        if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
+        {
+            var bufferWriter = new StreamBufferWriter(stream);
+            await Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken).ConfigureAwait(false);
+            await bufferWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
+        await Utf16CsvWriter.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static OutputStreamContext CreateOutputStream(Stream destination, CsvOptions options, bool useAsync)
+    {
+        return options.Compression switch
+        {
+            CsvCompressionMode.None => new OutputStreamContext(destination, disposable: null, asyncDisposable: null),
+            CsvCompressionMode.Gzip => CreateGzipOutputStream(destination, useAsync),
+            CsvCompressionMode.Zip => CreateZipOutputStream(destination),
+            _ => throw new ArgumentOutOfRangeException(nameof(options.Compression), options.Compression, "Unsupported compression mode.")
+        };
+    }
+
+    private static OutputStreamContext CreateGzipOutputStream(Stream destination, bool useAsync)
+    {
+        var gzip = new GZipStream(destination, CompressionLevel.Optimal, leaveOpen: true);
+        return useAsync
+            ? new OutputStreamContext(gzip, disposable: null, asyncDisposable: gzip)
+            : new OutputStreamContext(gzip, disposable: gzip, asyncDisposable: null);
+    }
+
+    private static OutputStreamContext CreateZipOutputStream(Stream destination)
+    {
+        var archive = new ZipArchive(destination, ZipArchiveMode.Create, leaveOpen: true);
+        var entry = archive.CreateEntry("data.csv", CompressionLevel.Optimal);
+        var entryStream = entry.Open();
+        return new OutputStreamContext(entryStream, new ZipOutputScope(entryStream, archive), asyncDisposable: null);
+    }
+
+    private sealed class OutputStreamContext : IDisposable, IAsyncDisposable
+    {
+        private readonly IDisposable? _disposable;
+        private readonly IAsyncDisposable? _asyncDisposable;
+
+        public OutputStreamContext(Stream stream, IDisposable? disposable, IAsyncDisposable? asyncDisposable)
+        {
+            Stream = stream;
+            _disposable = disposable;
+            _asyncDisposable = asyncDisposable;
+        }
+
+        public Stream Stream { get; }
+
+        public void Dispose()
+        {
+            _disposable?.Dispose();
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_asyncDisposable is not null)
+            {
+                await _asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                return;
+            }
+
+            _disposable?.Dispose();
+        }
+    }
+
+    private sealed class ZipOutputScope : IDisposable
+    {
+        private readonly Stream _entryStream;
+        private readonly ZipArchive _archive;
+
+        public ZipOutputScope(Stream entryStream, ZipArchive archive)
+        {
+            _entryStream = entryStream;
+            _archive = archive;
+        }
+
+        public void Dispose()
+        {
+            _entryStream.Dispose();
+            _archive.Dispose();
+        }
     }
 
     private sealed class StreamBufferWriter : IBufferWriter<byte>

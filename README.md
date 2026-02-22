@@ -24,6 +24,7 @@ CSV export often becomes a bottleneck when applications need to emit large datas
 - `JsonPropertyName` support from `System.Text.Json`.
 - Dynamic object and dictionary-like row support.
 - File path, `Stream`, and `TextWriter` targets.
+- Optional GZip or ZIP-compressed output via `CsvOptions.Compression`.
 - Synchronous and asynchronous APIs.
 - Standards-compliant escaping for delimiters, quotes, and line breaks.
 - Internal metadata cache to avoid repeated reflection.
@@ -127,6 +128,28 @@ Defaults today:
 - `NewLineBehavior`: `CsvNewLineBehavior.Environment` (uses platform newline)
 
 Use `NewLineBehavior = CsvNewLineBehavior.Lf` or `CrLf` for deterministic cross-platform files.
+
+### Compressed output (GZip / ZIP)
+
+```csharp
+var gzipOptions = new CsvOptions
+{
+    Compression = CsvCompressionMode.Gzip
+};
+
+await CsvWriter.WriteToFileAsync(data, "export.csv.gz", gzipOptions);
+
+var zipOptions = new CsvOptions
+{
+    Compression = CsvCompressionMode.Zip
+};
+
+await CsvWriter.WriteToFileAsync(data, "export.zip", zipOptions);
+```
+
+When `Compression = Zip`, CsvForge writes directly into a single `data.csv` entry without buffering the full CSV payload in memory.
+
+---
 
 ### Tab-delimited output
 
@@ -265,7 +288,7 @@ The benchmark suite compares:
 - `CsvForge` optimized async writer,
 - naive reflection/string-concatenation baseline.
 
-Scenarios include small, medium, and large row counts (e.g., 1k, 10k, 100k+).
+Scenarios include small, medium, and large row counts (e.g., 1k, 10k, 100k+), plus GZip and ZIP compression paths.
 
 ---
 

@@ -14,6 +14,8 @@ public class CsvSerializationBenchmarks
 {
     private TestRow[] _rows = Array.Empty<TestRow>();
     private CsvOptions _options = null!;
+    private CsvOptions _gzipOptions = null!;
+    private CsvOptions _zipOptions = null!;
     private PropertyInfo[] _naiveProperties = Array.Empty<PropertyInfo>();
 
     [Params(1_000, 10_000, 100_000)]
@@ -35,6 +37,9 @@ public class CsvSerializationBenchmarks
             StreamWriterBufferSize = 64 * 1024,
             NewLineBehavior = CsvNewLineBehavior.Lf
         };
+
+        _gzipOptions = _options with { Compression = CsvCompressionMode.Gzip };
+        _zipOptions = _options with { Compression = CsvCompressionMode.Zip };
 
         _naiveProperties = typeof(TestRow).GetProperties(BindingFlags.Public | BindingFlags.Instance);
     }
@@ -69,6 +74,37 @@ public class CsvSerializationBenchmarks
         using var writer = new StringWriter();
         await CsvWriter.WriteAsync(_rows, writer, _options).ConfigureAwait(false);
         return writer.ToString();
+    }
+    [Benchmark]
+    public long CsvForgeOptimizedSync_Gzip()
+    {
+        using var stream = new MemoryStream();
+        CsvWriter.Write(_rows, stream, _gzipOptions);
+        return stream.Length;
+    }
+
+    [Benchmark]
+    public async Task<long> CsvForgeOptimizedAsync_Gzip()
+    {
+        await using var stream = new MemoryStream();
+        await CsvWriter.WriteAsync(_rows, stream, _gzipOptions).ConfigureAwait(false);
+        return stream.Length;
+    }
+
+    [Benchmark]
+    public long CsvForgeOptimizedSync_Zip()
+    {
+        using var stream = new MemoryStream();
+        CsvWriter.Write(_rows, stream, _zipOptions);
+        return stream.Length;
+    }
+
+    [Benchmark]
+    public async Task<long> CsvForgeOptimizedAsync_Zip()
+    {
+        await using var stream = new MemoryStream();
+        await CsvWriter.WriteAsync(_rows, stream, _zipOptions).ConfigureAwait(false);
+        return stream.Length;
     }
 
     private static void WriteNaiveSync(IEnumerable<TestRow> rows, TextWriter writer, PropertyInfo[] properties)
