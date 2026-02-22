@@ -14,7 +14,7 @@ public static class CsvWriter
         options ??= CsvOptions.Default;
 
         using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, options.BufferSize, useAsync: false);
-        using var writer = new StreamWriter(stream, options.Encoding, options.BufferSize, leaveOpen: false);
+        using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: false);
         CsvSerializer.Write(data, writer, options);
         writer.Flush();
     }
@@ -24,7 +24,7 @@ public static class CsvWriter
         ArgumentNullException.ThrowIfNull(stream);
         options ??= CsvOptions.Default;
 
-        using var writer = new StreamWriter(stream, options.Encoding, options.BufferSize, leaveOpen: true);
+        using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
         CsvSerializer.Write(data, writer, options);
         writer.Flush();
     }
@@ -76,7 +76,7 @@ public static class CsvWriter
         options ??= CsvOptions.Default;
 
         await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, options.BufferSize, useAsync: true);
-        await using var writer = new StreamWriter(stream, options.Encoding, options.BufferSize, leaveOpen: false);
+        await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: false);
         await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
         await writer.FlushAsync().ConfigureAwait(false);
     }
@@ -86,7 +86,7 @@ public static class CsvWriter
         ArgumentNullException.ThrowIfNull(stream);
         options ??= CsvOptions.Default;
 
-        await using var writer = new StreamWriter(stream, options.Encoding, options.BufferSize, leaveOpen: true);
+        await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
         await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
         await writer.FlushAsync().ConfigureAwait(false);
     }
@@ -97,7 +97,7 @@ public static class CsvWriter
         options ??= CsvOptions.Default;
 
         await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, options.BufferSize, useAsync: true);
-        await using var writer = new StreamWriter(stream, options.Encoding, options.BufferSize, leaveOpen: false);
+        await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: false);
         await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
         await writer.FlushAsync().ConfigureAwait(false);
     }
@@ -107,7 +107,7 @@ public static class CsvWriter
         ArgumentNullException.ThrowIfNull(stream);
         options ??= CsvOptions.Default;
 
-        await using var writer = new StreamWriter(stream, options.Encoding, options.BufferSize, leaveOpen: true);
+        await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
         await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
         await writer.FlushAsync().ConfigureAwait(false);
     }

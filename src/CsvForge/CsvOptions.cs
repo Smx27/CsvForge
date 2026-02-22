@@ -23,6 +23,8 @@ public sealed class CsvOptions
 
     public int BufferSize { get; init; } = 16 * 1024;
 
+    public int StreamWriterBufferSize { get; init; } = 16 * 1024;
+
     public IFormatProvider FormatProvider { get; init; } = CultureInfo.InvariantCulture;
 
     public CsvNewLineBehavior NewLineBehavior { get; init; } = CsvNewLineBehavior.Environment;
