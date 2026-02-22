@@ -1,9 +1,11 @@
+using System.Dynamic;
 using System.Reflection;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 using CsvForge;
 
 BenchmarkRunner.Run<CsvSerializationBenchmarks>();
+BenchmarkRunner.Run<DynamicCsvSerializationBenchmarks>();
 
 [MemoryDiagnoser]
 public class CsvSerializationBenchmarks
@@ -124,4 +126,75 @@ public class CsvSerializationBenchmarks
     }
 
     public sealed record TestRow(int Id, string Name, string Notes);
+}
+
+[MemoryDiagnoser]
+public class DynamicCsvSerializationBenchmarks
+{
+    private IReadOnlyList<IDictionary<string, object?>> _rows = Array.Empty<IDictionary<string, object?>>();
+    private CsvOptions _unionOptions = null!;
+    private CsvOptions _firstShapeOptions = null!;
+
+    [Params(100_000, 250_000)]
+    public int RowCount { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        var rows = new List<IDictionary<string, object?>>(RowCount);
+        for (var i = 0; i < RowCount; i++)
+        {
+            IDictionary<string, object?> row = new ExpandoObject();
+            row["id"] = i;
+            row["name"] = $"name-{i}";
+
+            if (i % 3 == 0)
+            {
+                row["region"] = $"region-{i % 17}";
+            }
+
+            if (i % 5 == 0)
+            {
+                row["score"] = i * 1.05;
+            }
+
+            if (i % 7 == 0)
+            {
+                row["active"] = true;
+            }
+
+            rows.Add(row);
+        }
+
+        _rows = rows;
+        _unionOptions = new CsvOptions
+        {
+            IncludeHeader = true,
+            NewLineBehavior = CsvNewLineBehavior.Lf,
+            HeterogeneousHeaderBehavior = CsvHeterogeneousHeaderBehavior.Union
+        };
+
+        _firstShapeOptions = new CsvOptions
+        {
+            IncludeHeader = true,
+            NewLineBehavior = CsvNewLineBehavior.Lf,
+            HeterogeneousHeaderBehavior = CsvHeterogeneousHeaderBehavior.FirstShapeLock
+        };
+    }
+
+    [Benchmark]
+    public string Union_Sync()
+    {
+        using var writer = new StringWriter();
+        CsvWriter.Write(_rows, writer, _unionOptions);
+        return writer.ToString();
+    }
+
+    [Benchmark]
+    public string FirstShapeLock_Sync()
+    {
+        using var writer = new StringWriter();
+        CsvWriter.Write(_rows, writer, _firstShapeOptions);
+        return writer.ToString();
+    }
 }

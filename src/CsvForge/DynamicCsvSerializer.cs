@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Dynamic;
 using System.IO;
@@ -10,6 +11,11 @@ namespace CsvForge;
 
 internal static class DynamicCsvSerializer
 {
+    internal interface IReplayableAsyncEnumerable<out T>
+    {
+        IAsyncEnumerable<T> Replay();
+    }
+
     public static bool CanHandle<T>()
     {
         var type = typeof(T);
@@ -20,86 +26,267 @@ internal static class DynamicCsvSerializer
 
     public static int Write<T>(IEnumerable<T> data, TextWriter writer, CsvOptions options)
     {
-        var rows = new List<DynamicRow>();
+        using var context = new CsvSerializationContext(options);
+        return options.HeterogeneousHeaderBehavior == CsvHeterogeneousHeaderBehavior.FirstShapeLock
+            ? WriteFirstShapeLock(data, writer, options, context)
+            : WriteUnion(data, writer, options, context);
+    }
+
+    public static async Task<int> WriteAsync<T>(IEnumerable<T> data, TextWriter writer, CsvOptions options, CancellationToken cancellationToken)
+    {
+        using var context = new CsvSerializationContext(options);
+        return options.HeterogeneousHeaderBehavior == CsvHeterogeneousHeaderBehavior.FirstShapeLock
+            ? await WriteFirstShapeLockAsync(data, writer, options, context, cancellationToken).ConfigureAwait(false)
+            : await WriteUnionAsync(data, writer, options, context, cancellationToken).ConfigureAwait(false);
+    }
+
+    public static async Task<int> WriteAsync<T>(IAsyncEnumerable<T> data, TextWriter writer, CsvOptions options, CancellationToken cancellationToken)
+    {
+        using var context = new CsvSerializationContext(options);
+        if (options.HeterogeneousHeaderBehavior == CsvHeterogeneousHeaderBehavior.FirstShapeLock)
+        {
+            return await WriteFirstShapeLockAsync(data, writer, options, context, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (data is IReplayableAsyncEnumerable<T> replayable)
+        {
+            return await WriteUnionReplayableAsync(replayable, writer, options, context, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (options.UnionAsyncBehavior == CsvUnionAsyncBehavior.FirstShapeLock)
+        {
+            return await WriteFirstShapeLockAsync(data, writer, options, context, cancellationToken).ConfigureAwait(false);
+        }
+
+        throw new InvalidOperationException("Union header discovery for IAsyncEnumerable dynamic rows requires a replayable source. Set CsvOptions.UnionAsyncBehavior to FirstShapeLock to stream non-replayable sources.");
+    }
+
+    private static int WriteUnion<T>(IEnumerable<T> data, TextWriter writer, CsvOptions options, CsvSerializationContext context)
+    {
         var headers = new List<string>();
         var headerSet = new HashSet<string>(StringComparer.Ordinal);
+        var rowsWritten = 0;
 
         foreach (var item in data)
         {
-            var row = DynamicRow.Create(item);
-            rows.Add(row);
-            CollectHeaders(row, headers, headerSet, options.HeterogeneousHeaderBehavior == CsvHeterogeneousHeaderBehavior.Union || headers.Count == 0);
+            rowsWritten++;
+            CollectHeaders(DynamicRow.Create(item), headers, headerSet, allowAdd: true);
         }
 
-        using var context = new CsvSerializationContext(options);
         if (options.IncludeHeader)
         {
             WriteHeader(writer, headers, context, options.NewLine);
         }
 
-        foreach (var row in rows)
+        foreach (var item in data)
         {
-            WriteRow(writer, row, headers, context, options.NewLine);
+            WriteRow(writer, DynamicRow.Create(item), headers, context, options.NewLine);
         }
 
-        return rows.Count;
+        return rowsWritten;
     }
 
-    public static async Task<int> WriteAsync<T>(IEnumerable<T> data, TextWriter writer, CsvOptions options, CancellationToken cancellationToken)
+    private static async Task<int> WriteUnionAsync<T>(IEnumerable<T> data, TextWriter writer, CsvOptions options, CsvSerializationContext context, CancellationToken cancellationToken)
     {
-        var rows = new List<DynamicRow>();
         var headers = new List<string>();
         var headerSet = new HashSet<string>(StringComparer.Ordinal);
+        var rowsWritten = 0;
 
         foreach (var item in data)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var row = DynamicRow.Create(item);
-            rows.Add(row);
-            CollectHeaders(row, headers, headerSet, options.HeterogeneousHeaderBehavior == CsvHeterogeneousHeaderBehavior.Union || headers.Count == 0);
+            rowsWritten++;
+            CollectHeaders(DynamicRow.Create(item), headers, headerSet, allowAdd: true);
         }
 
-        using var context = new CsvSerializationContext(options);
         if (options.IncludeHeader)
         {
             await WriteHeaderAsync(writer, headers, context, options.NewLine, cancellationToken).ConfigureAwait(false);
         }
 
-        foreach (var row in rows)
+        foreach (var item in data)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            await WriteRowAsync(writer, DynamicRow.Create(item), headers, context, options.NewLine, cancellationToken).ConfigureAwait(false);
+        }
+
+        return rowsWritten;
+    }
+
+    private static async Task<int> WriteUnionReplayableAsync<T>(IReplayableAsyncEnumerable<T> replayable, TextWriter writer, CsvOptions options, CsvSerializationContext context, CancellationToken cancellationToken)
+    {
+        var headers = new List<string>();
+        var headerSet = new HashSet<string>(StringComparer.Ordinal);
+        var rowsWritten = 0;
+
+        await foreach (var item in replayable.Replay().WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            rowsWritten++;
+            CollectHeaders(DynamicRow.Create(item), headers, headerSet, allowAdd: true);
+        }
+
+        if (options.IncludeHeader)
+        {
+            await WriteHeaderAsync(writer, headers, context, options.NewLine, cancellationToken).ConfigureAwait(false);
+        }
+
+        await foreach (var item in replayable.Replay().WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            await WriteRowAsync(writer, DynamicRow.Create(item), headers, context, options.NewLine, cancellationToken).ConfigureAwait(false);
+        }
+
+        return rowsWritten;
+    }
+
+    private static int WriteFirstShapeLock<T>(IEnumerable<T> data, TextWriter writer, CsvOptions options, CsvSerializationContext context)
+    {
+        using var enumerator = data.GetEnumerator();
+        var headers = new List<string>();
+        var headerSet = new HashSet<string>(StringComparer.Ordinal);
+        var rowsWritten = 0;
+        var pendingEmptyRows = 0;
+        var headerWritten = false;
+
+        while (enumerator.MoveNext())
+        {
+            rowsWritten++;
+            var row = DynamicRow.Create(enumerator.Current);
+
+            if (headerSet.Count == 0 && !TryLockHeaders(row, headers, headerSet))
+            {
+                pendingEmptyRows++;
+                continue;
+            }
+
+            if (!headerWritten)
+            {
+                if (options.IncludeHeader)
+                {
+                    WriteHeader(writer, headers, context, options.NewLine);
+                }
+
+                WriteEmptyRows(writer, headers.Count, pendingEmptyRows, context, options.NewLine);
+                headerWritten = true;
+                pendingEmptyRows = 0;
+            }
+
+            WriteRow(writer, row, headers, context, options.NewLine);
+        }
+
+        if (!headerWritten)
+        {
+            if (options.IncludeHeader)
+            {
+                WriteHeader(writer, headers, context, options.NewLine);
+            }
+
+            WriteEmptyRows(writer, headers.Count, pendingEmptyRows, context, options.NewLine);
+        }
+
+        return rowsWritten;
+    }
+
+    private static async Task<int> WriteFirstShapeLockAsync<T>(IEnumerable<T> data, TextWriter writer, CsvOptions options, CsvSerializationContext context, CancellationToken cancellationToken)
+    {
+        using var enumerator = data.GetEnumerator();
+        var headers = new List<string>();
+        var headerSet = new HashSet<string>(StringComparer.Ordinal);
+        var rowsWritten = 0;
+        var pendingEmptyRows = 0;
+        var headerWritten = false;
+
+        while (enumerator.MoveNext())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            rowsWritten++;
+            var row = DynamicRow.Create(enumerator.Current);
+
+            if (headerSet.Count == 0 && !TryLockHeaders(row, headers, headerSet))
+            {
+                pendingEmptyRows++;
+                continue;
+            }
+
+            if (!headerWritten)
+            {
+                if (options.IncludeHeader)
+                {
+                    await WriteHeaderAsync(writer, headers, context, options.NewLine, cancellationToken).ConfigureAwait(false);
+                }
+
+                await WriteEmptyRowsAsync(writer, headers.Count, pendingEmptyRows, context, options.NewLine, cancellationToken).ConfigureAwait(false);
+                headerWritten = true;
+                pendingEmptyRows = 0;
+            }
+
             await WriteRowAsync(writer, row, headers, context, options.NewLine, cancellationToken).ConfigureAwait(false);
         }
 
-        return rows.Count;
+        if (!headerWritten)
+        {
+            if (options.IncludeHeader)
+            {
+                await WriteHeaderAsync(writer, headers, context, options.NewLine, cancellationToken).ConfigureAwait(false);
+            }
+
+            await WriteEmptyRowsAsync(writer, headers.Count, pendingEmptyRows, context, options.NewLine, cancellationToken).ConfigureAwait(false);
+        }
+
+        return rowsWritten;
     }
 
-    public static async Task<int> WriteAsync<T>(IAsyncEnumerable<T> data, TextWriter writer, CsvOptions options, CancellationToken cancellationToken)
+    private static async Task<int> WriteFirstShapeLockAsync<T>(IAsyncEnumerable<T> data, TextWriter writer, CsvOptions options, CsvSerializationContext context, CancellationToken cancellationToken)
     {
-        var rows = new List<DynamicRow>();
         var headers = new List<string>();
         var headerSet = new HashSet<string>(StringComparer.Ordinal);
+        var rowsWritten = 0;
+        var pendingEmptyRows = 0;
+        var headerWritten = false;
 
         await foreach (var item in data.WithCancellation(cancellationToken).ConfigureAwait(false))
         {
+            rowsWritten++;
             var row = DynamicRow.Create(item);
-            rows.Add(row);
-            CollectHeaders(row, headers, headerSet, options.HeterogeneousHeaderBehavior == CsvHeterogeneousHeaderBehavior.Union || headers.Count == 0);
-        }
 
-        using var context = new CsvSerializationContext(options);
-        if (options.IncludeHeader)
-        {
-            await WriteHeaderAsync(writer, headers, context, options.NewLine, cancellationToken).ConfigureAwait(false);
-        }
+            if (headerSet.Count == 0 && !TryLockHeaders(row, headers, headerSet))
+            {
+                pendingEmptyRows++;
+                continue;
+            }
 
-        foreach (var row in rows)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (!headerWritten)
+            {
+                if (options.IncludeHeader)
+                {
+                    await WriteHeaderAsync(writer, headers, context, options.NewLine, cancellationToken).ConfigureAwait(false);
+                }
+
+                await WriteEmptyRowsAsync(writer, headers.Count, pendingEmptyRows, context, options.NewLine, cancellationToken).ConfigureAwait(false);
+                headerWritten = true;
+                pendingEmptyRows = 0;
+            }
+
             await WriteRowAsync(writer, row, headers, context, options.NewLine, cancellationToken).ConfigureAwait(false);
         }
 
-        return rows.Count;
+        if (!headerWritten)
+        {
+            if (options.IncludeHeader)
+            {
+                await WriteHeaderAsync(writer, headers, context, options.NewLine, cancellationToken).ConfigureAwait(false);
+            }
+
+            await WriteEmptyRowsAsync(writer, headers.Count, pendingEmptyRows, context, options.NewLine, cancellationToken).ConfigureAwait(false);
+        }
+
+        return rowsWritten;
+    }
+
+    private static bool TryLockHeaders(DynamicRow row, List<string> headers, HashSet<string> headerSet)
+    {
+        var before = headers.Count;
+        CollectHeaders(row, headers, headerSet, allowAdd: true);
+        return headers.Count > before;
     }
 
     private static void CollectHeaders(DynamicRow row, List<string> headers, HashSet<string> headerSet, bool allowAdd)
@@ -180,11 +367,95 @@ internal static class DynamicCsvSerializer
         await writer.WriteAsync(newLine.AsMemory()).ConfigureAwait(false);
     }
 
+    private static void WriteEmptyRows(TextWriter writer, int headerCount, int rowCount, CsvSerializationContext context, string newLine)
+    {
+        if (rowCount <= 0)
+        {
+            return;
+        }
+
+        var rented = ArrayPool<string>.Shared.Rent(Math.Max(headerCount, 1));
+        try
+        {
+            Array.Fill(rented, string.Empty, 0, headerCount);
+            for (var i = 0; i < rowCount; i++)
+            {
+                WriteRow(writer, new DynamicRow(rented, headerCount), headerCount, context, newLine);
+            }
+        }
+        finally
+        {
+            ArrayPool<string>.Shared.Return(rented, clearArray: true);
+        }
+    }
+
+    private static async Task WriteEmptyRowsAsync(TextWriter writer, int headerCount, int rowCount, CsvSerializationContext context, string newLine, CancellationToken cancellationToken)
+    {
+        if (rowCount <= 0)
+        {
+            return;
+        }
+
+        var rented = ArrayPool<string>.Shared.Rent(Math.Max(headerCount, 1));
+        try
+        {
+            Array.Fill(rented, string.Empty, 0, headerCount);
+            for (var i = 0; i < rowCount; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await WriteRowAsync(writer, new DynamicRow(rented, headerCount), headerCount, context, newLine, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            ArrayPool<string>.Shared.Return(rented, clearArray: true);
+        }
+    }
+
+    private static void WriteRow(TextWriter writer, DynamicRow row, int headerCount, CsvSerializationContext context, string newLine)
+    {
+        for (var i = 0; i < headerCount; i++)
+        {
+            if (i > 0)
+            {
+                writer.Write(context.Options.Delimiter);
+            }
+
+            CsvValueFormatter.WriteField(writer, row.GetValue(i), context);
+        }
+
+        writer.Write(newLine);
+    }
+
+    private static async Task WriteRowAsync(TextWriter writer, DynamicRow row, int headerCount, CsvSerializationContext context, string newLine, CancellationToken cancellationToken)
+    {
+        for (var i = 0; i < headerCount; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (i > 0)
+            {
+                await writer.WriteAsync(context.Options.Delimiter).ConfigureAwait(false);
+            }
+
+            await CsvValueFormatter.WriteFieldAsync(writer, row.GetValue(i), context, cancellationToken).ConfigureAwait(false);
+        }
+
+        await writer.WriteAsync(newLine.AsMemory()).ConfigureAwait(false);
+    }
+
     private sealed class DynamicRow
     {
         private readonly IDictionary<string, object?>? _dictionary;
         private readonly RuntimeTypeMetadata? _runtimeMetadata;
         private readonly object? _instance;
+        private readonly string[]? _arrayValues;
+        private readonly int _arrayCount;
+
+        public DynamicRow(string[] arrayValues, int arrayCount)
+        {
+            _arrayValues = arrayValues;
+            _arrayCount = arrayCount;
+        }
 
         private DynamicRow(IDictionary<string, object?> dictionary)
         {
@@ -226,6 +497,11 @@ internal static class DynamicCsvSerializer
                 yield break;
             }
 
+            if (_arrayValues is not null)
+            {
+                yield break;
+            }
+
             foreach (var column in _runtimeMetadata!.Columns)
             {
                 yield return column.ColumnName;
@@ -239,9 +515,24 @@ internal static class DynamicCsvSerializer
                 return _dictionary.TryGetValue(key, out var value) ? value : null;
             }
 
+            if (_arrayValues is not null)
+            {
+                return null;
+            }
+
             return _runtimeMetadata!.ColumnLookup.TryGetValue(key, out var getter)
                 ? getter(_instance!)
                 : null;
+        }
+
+        public object? GetValue(int index)
+        {
+            if (_arrayValues is null || index >= _arrayCount)
+            {
+                return null;
+            }
+
+            return _arrayValues[index];
         }
     }
 }
