@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.ComponentModel;
-using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -13,7 +11,6 @@ namespace CsvForge.Metadata;
 internal static class TypeMetadataCache
 {
     private static readonly ConcurrentDictionary<Type, TypeMetadata> Cache = new();
-    private static readonly ConcurrentDictionary<Type, Func<object?, IFormatProvider, string?>> FormatterCache = new();
 
     public static TypeMetadata GetOrAdd(Type type)
     {
@@ -49,8 +46,7 @@ internal static class TypeMetadataCache
             columnName,
             csvAttribute?.Order,
             GetDeclarationOrder(property),
-            BuildGetter(property),
-            GetOrCreateFormatter(property.PropertyType));
+            BuildGetter(property));
     }
 
     private static Func<object, object?> BuildGetter(PropertyInfo property)
@@ -61,38 +57,6 @@ internal static class TypeMetadataCache
         var castResult = Expression.Convert(propertyAccess, typeof(object));
 
         return Expression.Lambda<Func<object, object?>>(castResult, instance).Compile();
-    }
-
-    private static Func<object?, IFormatProvider, string?> GetOrCreateFormatter(Type propertyType)
-    {
-        return FormatterCache.GetOrAdd(propertyType, CreateFormatter);
-    }
-
-    private static Func<object?, IFormatProvider, string?> CreateFormatter(Type propertyType)
-    {
-        var targetType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
-        var converter = TypeDescriptor.GetConverter(targetType);
-        var cultureAwareConverter = converter.CanConvertTo(typeof(string));
-
-        return (value, provider) =>
-        {
-            if (value is null)
-            {
-                return null;
-            }
-
-            if (value is IFormattable formattable)
-            {
-                return formattable.ToString(null, provider);
-            }
-
-            if (cultureAwareConverter)
-            {
-                return converter.ConvertToString(null, provider as CultureInfo ?? CultureInfo.CurrentCulture, value);
-            }
-
-            return Convert.ToString(value, provider);
-        };
     }
 
     private static int GetDeclarationOrder(MemberInfo property)
@@ -115,5 +79,4 @@ internal sealed record ColumnMetadata(
     string ColumnName,
     int? Order,
     int DeclarationOrder,
-    Func<object, object?> Getter,
-    Func<object?, IFormatProvider, string?> Formatter);
+    Func<object, object?> Getter);
