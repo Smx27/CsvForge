@@ -12,7 +12,7 @@ public class CsvColumnMetadataTests
         var records = new[] { new NamedRecord { Value = 42 } };
         using var writer = new StringWriter();
 
-        CsvWriter.Write(records, writer, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf });
+        CsvWriter.Write(records, writer, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true });
 
         var output = writer.ToString();
         Assert.StartsWith("csv_name\n", output, StringComparison.Ordinal);
@@ -24,7 +24,7 @@ public class CsvColumnMetadataTests
         var records = new[] { new OrderedRecord { B = 2, C = 3, A = 1 } };
         using var writer = new StringWriter();
 
-        CsvWriter.Write(records, writer, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf });
+        CsvWriter.Write(records, writer, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true });
 
         var lines = writer.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal("second,first,third", lines[0]);

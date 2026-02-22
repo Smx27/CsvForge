@@ -23,7 +23,8 @@ public class CsvSerializerFormattingTests
         CsvWriter.Write(records, writer, new CsvOptions
         {
             NewLineBehavior = CsvNewLineBehavior.Lf,
-            FormatProvider = CultureInfo.GetCultureInfo("fr-FR")
+            FormatProvider = CultureInfo.GetCultureInfo("fr-FR"),
+            EnableRuntimeMetadataFallback = true
         });
 
         var lines = writer.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
@@ -46,7 +47,8 @@ public class CsvSerializerFormattingTests
         await CsvWriter.WriteAsync(records, writer, new CsvOptions
         {
             NewLineBehavior = CsvNewLineBehavior.CrLf,
-            IncludeHeader = true
+            IncludeHeader = true,
+            EnableRuntimeMetadataFallback = true
         });
 
         var output = writer.ToString();

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
@@ -17,6 +18,7 @@ internal static class TypeMetadataCache
     private static readonly ConcurrentDictionary<Type, object> TypedCache = new();
     private static readonly ConcurrentDictionary<Type, RuntimeTypeMetadata> RuntimeCache = new();
 
+    [RequiresUnreferencedCode("Runtime metadata fallback uses reflection over public properties and is not trimming-safe. Prefer generated ICsvTypeWriter<T> implementations.")]
     public static TypeMetadata<T> GetOrAdd<T>()
     {
         return (TypeMetadata<T>)TypedCache.GetOrAdd(typeof(T), static _ => BuildTypeMetadata<T>());
@@ -27,6 +29,7 @@ internal static class TypeMetadataCache
         return RuntimeCache.GetOrAdd(type, BuildRuntimeTypeMetadata);
     }
 
+    [RequiresUnreferencedCode("Runtime metadata fallback uses reflection over public properties and is not trimming-safe. Prefer generated ICsvTypeWriter<T> implementations.")]
     private static TypeMetadata<T> BuildTypeMetadata<T>()
     {
         var columns = typeof(T)
@@ -78,8 +81,7 @@ internal static class TypeMetadataCache
             details.ColumnName,
             details.Order,
             details.DeclarationOrder,
-            property,
-            BuildGetter<T>(property));
+            property);
     }
 
     private static RuntimeColumnDefinition BuildRuntimeColumnMetadata(PropertyInfo property)
@@ -111,22 +113,6 @@ internal static class TypeMetadataCache
         var propertyAccess = Expression.Property(cast, property);
         var box = Expression.Convert(propertyAccess, typeof(object));
         return Expression.Lambda<Func<object, object?>>(box, instance).Compile();
-    }
-
-    private static Func<T, TProperty> BuildGetter<T, TProperty>(PropertyInfo property)
-    {
-        var instance = Expression.Parameter(typeof(T), "instance");
-        var propertyAccess = Expression.Property(instance, property);
-        return Expression.Lambda<Func<T, TProperty>>(propertyAccess, instance).Compile();
-    }
-
-    private static Delegate BuildGetter<T>(PropertyInfo property)
-    {
-        var buildMethod = typeof(TypeMetadataCache)
-            .GetMethod(nameof(BuildGetter), BindingFlags.NonPublic | BindingFlags.Static, binder: null, new[] { typeof(PropertyInfo) }, modifiers: null)!;
-
-        var genericMethod = buildMethod.MakeGenericMethod(typeof(T), property.PropertyType);
-        return (Delegate)genericMethod.Invoke(null, new object[] { property })!;
     }
 
     private static int GetDeclarationOrder(MemberInfo property)
@@ -171,35 +157,33 @@ internal sealed record ColumnDefinition<T>(
     string ColumnName,
     int? Order,
     int DeclarationOrder,
-    PropertyInfo Property,
-    Delegate Getter)
+    PropertyInfo Property)
 {
     public IColumnWriter<T> CreateWriter()
     {
-        var columnWriterType = typeof(ColumnWriter<,>).MakeGenericType(typeof(T), Property.PropertyType);
-        return (IColumnWriter<T>)Activator.CreateInstance(columnWriterType, ColumnName, Getter)!;
+        return new ReflectiveColumnWriter<T>(ColumnName, Property);
     }
 }
 
-internal sealed class ColumnWriter<T, TProperty> : IColumnWriter<T>
+internal sealed class ReflectiveColumnWriter<T> : IColumnWriter<T>
 {
-    private readonly Func<T, TProperty> _getter;
+    private readonly PropertyInfo _property;
 
     public string ColumnName { get; }
 
-    public ColumnWriter(string columnName, Delegate getter)
+    public ReflectiveColumnWriter(string columnName, PropertyInfo property)
     {
         ColumnName = columnName;
-        _getter = (Func<T, TProperty>)getter;
+        _property = property;
     }
 
     public void Write(TextWriter writer, T item, CsvSerializationContext context)
     {
-        CsvValueFormatter.WriteField(writer, _getter(item), context);
+        CsvValueFormatter.WriteField(writer, _property.GetValue(item), context);
     }
 
     public ValueTask WriteAsync(TextWriter writer, T item, CsvSerializationContext context, CancellationToken cancellationToken)
     {
-        return CsvValueFormatter.WriteFieldAsync(writer, _getter(item), context, cancellationToken);
+        return CsvValueFormatter.WriteFieldAsync(writer, _property.GetValue(item), context, cancellationToken);
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,6 +30,7 @@ internal static class CsvSerializer
             return;
         }
 
+        EnsureRuntimeFallbackEnabled<T>(options);
         var metadata = TypeMetadataCache.GetOrAdd<T>();
         var newLine = options.NewLine;
         using var context = new CsvSerializationContext(options);
@@ -63,6 +65,7 @@ internal static class CsvSerializer
             return;
         }
 
+        EnsureRuntimeFallbackEnabled<T>(options);
         var metadata = TypeMetadataCache.GetOrAdd<T>();
         var newLine = options.NewLine;
         using var context = new CsvSerializationContext(options);
@@ -97,6 +100,7 @@ internal static class CsvSerializer
             return;
         }
 
+        EnsureRuntimeFallbackEnabled<T>(options);
         var metadata = TypeMetadataCache.GetOrAdd<T>();
         var newLine = options.NewLine;
         using var context = new CsvSerializationContext(options);
@@ -308,5 +312,21 @@ internal static class CsvSerializer
         }
 
         await writer.WriteAsync(newLine.AsMemory()).ConfigureAwait(false);
+    }
+
+    private static void EnsureRuntimeFallbackEnabled<T>(CsvOptions options)
+    {
+        if (options.EnableRuntimeMetadataFallback)
+        {
+            return;
+        }
+
+        throw CreateGeneratedWriterRequiredException(typeof(T));
+    }
+
+    [RequiresUnreferencedCode("Runtime metadata fallback uses reflection over public properties and is not trimming-safe. Prefer generated ICsvTypeWriter<T> implementations.")]
+    private static InvalidOperationException CreateGeneratedWriterRequiredException(Type type)
+    {
+        return new InvalidOperationException($"No generated ICsvTypeWriter<{type.FullName}> found. Register or generate a typed writer, or explicitly enable CsvOptions.EnableRuntimeMetadataFallback for reflection-based serialization in non-AOT scenarios.");
     }
 }
