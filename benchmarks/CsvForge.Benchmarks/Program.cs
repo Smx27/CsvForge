@@ -1,12 +1,13 @@
 using System.Dynamic;
 using System.Reflection;
+using System.Buffers;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 using CsvForge;
 
 BenchmarkRunner.Run<CsvSerializationBenchmarks>();
 BenchmarkRunner.Run<DynamicCsvSerializationBenchmarks>();
-BenchmarkRunner.Run<GeneratorVsFallbackBenchmarks>();
+BenchmarkRunner.Run<GeneratorEngineMatrixBenchmarks>();
 
 [MemoryDiagnoser]
 public class CsvSerializationBenchmarks
@@ -202,83 +203,174 @@ public class DynamicCsvSerializationBenchmarks
 
 
 [MemoryDiagnoser]
-public class GeneratorVsFallbackBenchmarks
+public class GeneratorEngineMatrixBenchmarks
 {
-    private SourceGeneratedRow[] _generatedRows = Array.Empty<SourceGeneratedRow>();
-    private ReflectionFallbackRow[] _fallbackRows = Array.Empty<ReflectionFallbackRow>();
+    private SourceGeneratedMatrixRow[] _generatedRows = Array.Empty<SourceGeneratedMatrixRow>();
+    private ReflectionFallbackMatrixRow[] _fallbackRows = Array.Empty<ReflectionFallbackMatrixRow>();
     private CsvOptions _generatedOptions = null!;
     private CsvOptions _fallbackOptions = null!;
+    private NullBufferWriter _nullBufferWriter = null!;
 
-    [Params(1_000, 10_000)]
+    [Params(100_000, 1_000_000)]
     public int RowCount { get; set; }
+
+    [Params(CsvDialectScenario.CommaLfNoEscaping, CsvDialectScenario.SemicolonCrLfNoEscaping, CsvDialectScenario.CommaCrLfEscaping)]
+    public CsvDialectScenario DialectScenario { get; set; }
 
     [GlobalSetup]
     public void Setup()
     {
-        _generatedRows = new SourceGeneratedRow[RowCount];
-        _fallbackRows = new ReflectionFallbackRow[RowCount];
+        var (delimiter, newLineBehavior, escapingMode) = DialectScenario.GetSettings();
+
+        _generatedRows = new SourceGeneratedMatrixRow[RowCount];
+        _fallbackRows = new ReflectionFallbackMatrixRow[RowCount];
 
         for (var i = 0; i < RowCount; i++)
         {
-            var generated = new SourceGeneratedRow
+            var notes = escapingMode == EscapingMode.Rfc4180Stress
+                ? $"note {i},\"escaped\"{(i % 13 == 0 ? "\r\nline-two" : string.Empty)}"
+                : $"note-{i}";
+
+            var generated = new SourceGeneratedMatrixRow
             {
                 Id = i,
                 Name = $"name-{i}",
-                IsActive = i % 2 == 0
+                IsActive = i % 2 == 0,
+                Notes = notes
             };
 
             _generatedRows[i] = generated;
-            _fallbackRows[i] = new ReflectionFallbackRow
+            _fallbackRows[i] = new ReflectionFallbackMatrixRow
             {
                 Id = generated.Id,
                 Name = generated.Name,
-                IsActive = generated.IsActive
+                IsActive = generated.IsActive,
+                Notes = generated.Notes
             };
         }
 
         _generatedOptions = new CsvOptions
         {
             IncludeHeader = true,
-            NewLineBehavior = CsvNewLineBehavior.Lf,
+            Delimiter = delimiter,
+            NewLineBehavior = newLineBehavior,
             EnableRuntimeMetadataFallback = false
         };
 
         _fallbackOptions = new CsvOptions
         {
             IncludeHeader = true,
-            NewLineBehavior = CsvNewLineBehavior.Lf,
+            Delimiter = delimiter,
+            NewLineBehavior = newLineBehavior,
             EnableRuntimeMetadataFallback = true
         };
+
+        _nullBufferWriter = new NullBufferWriter();
+    }
+
+    [Benchmark(Baseline = true)]
+    public void ReflectionFallback_Utf16()
+    {
+        CsvWriter.Write(_fallbackRows, TextWriter.Null, _fallbackOptions);
     }
 
     [Benchmark]
-    public string SourceGeneratedWriter()
+    public void SourceGenerated_Utf16()
     {
-        using var writer = new StringWriter();
-        CsvWriter.Write(_generatedRows, writer, _generatedOptions);
-        return writer.ToString();
+        CsvWriter.Write(_generatedRows, TextWriter.Null, _generatedOptions);
     }
 
     [Benchmark]
-    public string RuntimeFallbackWriter()
+    public void SourceGenerated_Utf8_Stream()
     {
-        using var writer = new StringWriter();
-        CsvWriter.Write(_fallbackRows, writer, _fallbackOptions);
-        return writer.ToString();
+        CsvWriter.Write(_generatedRows, Stream.Null, _generatedOptions);
+    }
+
+    [Benchmark]
+    public void SourceGenerated_Utf8_IBufferWriter()
+    {
+        _nullBufferWriter.Reset();
+        CsvWriter.Write(_generatedRows, _nullBufferWriter, _generatedOptions);
+    }
+
+    public enum CsvDialectScenario
+    {
+        CommaLfNoEscaping,
+        SemicolonCrLfNoEscaping,
+        CommaCrLfEscaping
+    }
+
+
+    private sealed class NullBufferWriter : IBufferWriter<byte>
+    {
+        private byte[] _buffer = new byte[64 * 1024];
+
+        public void Advance(int count)
+        {
+        }
+
+        public Memory<byte> GetMemory(int sizeHint = 0)
+        {
+            EnsureCapacity(sizeHint);
+            return _buffer;
+        }
+
+        public Span<byte> GetSpan(int sizeHint = 0)
+        {
+            EnsureCapacity(sizeHint);
+            return _buffer;
+        }
+
+        public void Reset()
+        {
+        }
+
+        private void EnsureCapacity(int sizeHint)
+        {
+            if (sizeHint <= 0 || sizeHint <= _buffer.Length)
+            {
+                return;
+            }
+
+            _buffer = new byte[Math.Max(sizeHint, _buffer.Length * 2)];
+        }
     }
 
     [CsvForge.Attributes.CsvSerializable]
-    public partial class SourceGeneratedRow
+    public partial class SourceGeneratedMatrixRow
     {
         public int Id { get; init; }
         public string Name { get; init; } = string.Empty;
         public bool IsActive { get; init; }
+        public string Notes { get; init; } = string.Empty;
     }
 
-    public sealed class ReflectionFallbackRow
+    public sealed class ReflectionFallbackMatrixRow
     {
         public int Id { get; init; }
         public string Name { get; init; } = string.Empty;
         public bool IsActive { get; init; }
+        public string Notes { get; init; } = string.Empty;
     }
+
+}
+
+public static class CsvDialectScenarioExtensions
+{
+    public static (char Delimiter, CsvNewLineBehavior NewLine, EscapingMode EscapingMode) GetSettings(this GeneratorEngineMatrixBenchmarks.CsvDialectScenario scenario)
+    {
+        return scenario switch
+        {
+            GeneratorEngineMatrixBenchmarks.CsvDialectScenario.CommaLfNoEscaping => (',', CsvNewLineBehavior.Lf, EscapingMode.None),
+            GeneratorEngineMatrixBenchmarks.CsvDialectScenario.SemicolonCrLfNoEscaping => (';', CsvNewLineBehavior.CrLf, EscapingMode.None),
+            GeneratorEngineMatrixBenchmarks.CsvDialectScenario.CommaCrLfEscaping => (',', CsvNewLineBehavior.CrLf, EscapingMode.Rfc4180Stress),
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null)
+        };
+    }
+}
+
+public enum EscapingMode
+{
+    None,
+    Rfc4180Stress
 }
