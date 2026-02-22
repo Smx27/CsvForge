@@ -8,15 +8,29 @@ namespace CsvForge;
 
 public static class CsvWriter
 {
-    public static void Write<T>(IEnumerable<T> data, string path, CsvOptions? options = null)
+    /// <summary>
+    /// Writes rows to a file at <paramref name="filePath"/>.
+    /// </summary>
+    public static void WriteToFile<T>(IEnumerable<T> data, string filePath, CsvOptions? options = null)
     {
-        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(filePath);
         options ??= CsvOptions.Default;
 
-        using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, options.BufferSize, useAsync: false);
+        using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.Read, options.BufferSize, useAsync: false);
         using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: false);
         CsvSerializer.Write(data, writer, options);
         writer.Flush();
+    }
+
+    /// <summary>
+    /// Writes rows to a file.
+    /// </summary>
+    /// <remarks>
+    /// Prefer <see cref="WriteToFile{T}(IEnumerable{T}, string, CsvOptions?)"/> for path-based output.
+    /// </remarks>
+    public static void Write<T>(IEnumerable<T> data, string path, CsvOptions? options = null)
+    {
+        WriteToFile(data, path, options);
     }
 
     public static void Write<T>(IEnumerable<T> data, Stream stream, CsvOptions? options = null)
@@ -36,9 +50,31 @@ public static class CsvWriter
         writer.Flush();
     }
 
+    /// <summary>
+    /// Asynchronously writes rows from <see cref="IEnumerable{T}"/> to a file at <paramref name="filePath"/>.
+    /// </summary>
+    public static Task WriteToFileAsync<T>(IEnumerable<T> data, string filePath, CsvOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        return WriteEnumerableToPathAsync(data, filePath, options, cancellationToken);
+    }
+
+    /// <summary>
+    /// Asynchronously writes rows from <see cref="IAsyncEnumerable{T}"/> to a file at <paramref name="filePath"/>.
+    /// </summary>
+    public static Task WriteToFileAsync<T>(IAsyncEnumerable<T> data, string filePath, CsvOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        return WriteAsyncEnumerableToPathAsync(data, filePath, options, cancellationToken);
+    }
+
+    /// <summary>
+    /// Asynchronously writes rows to a file.
+    /// </summary>
+    /// <remarks>
+    /// Prefer <see cref="WriteToFileAsync{T}(IEnumerable{T}, string, CsvOptions?, CancellationToken)"/> for path-based output.
+    /// </remarks>
     public static Task WriteAsync<T>(IEnumerable<T> data, string path, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
-        return WriteEnumerableToPathAsync(data, path, options, cancellationToken);
+        return WriteToFileAsync(data, path, options, cancellationToken);
     }
 
     public static Task WriteAsync<T>(IEnumerable<T> data, Stream stream, CsvOptions? options = null, CancellationToken cancellationToken = default)
@@ -53,9 +89,15 @@ public static class CsvWriter
         await writer.FlushAsync().ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a file.
+    /// </summary>
+    /// <remarks>
+    /// Prefer <see cref="WriteToFileAsync{T}(IAsyncEnumerable{T}, string, CsvOptions?, CancellationToken)"/> for path-based output.
+    /// </remarks>
     public static Task WriteAsync<T>(IAsyncEnumerable<T> data, string path, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
-        return WriteAsyncEnumerableToPathAsync(data, path, options, cancellationToken);
+        return WriteToFileAsync(data, path, options, cancellationToken);
     }
 
     public static Task WriteAsync<T>(IAsyncEnumerable<T> data, Stream stream, CsvOptions? options = null, CancellationToken cancellationToken = default)

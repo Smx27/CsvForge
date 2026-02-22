@@ -76,7 +76,7 @@ var rows = new List<User>
     new() { Id = 2, Name = "Linus", Email = "linus@example.com" }
 };
 
-await CsvWriter.WriteAsync(rows, "users.csv");
+await CsvWriter.WriteToFileAsync(rows, "users.csv");
 ```
 
 ### 2) Write to stream
@@ -115,11 +115,18 @@ var options = new CsvOptions
     IncludeHeader = true,
     Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
     BufferSize = 64 * 1024,
-    Culture = CultureInfo.InvariantCulture
+    FormatProvider = CultureInfo.InvariantCulture
 };
 
-await CsvWriter.WriteAsync(data, "export.csv", options);
+await CsvWriter.WriteToFileAsync(data, "export.csv", options);
 ```
+
+Defaults today:
+
+- `Encoding`: UTF-8 without BOM (`new UTF8Encoding(false)`)
+- `NewLineBehavior`: `CsvNewLineBehavior.Environment` (uses platform newline)
+
+Use `NewLineBehavior = CsvNewLineBehavior.Lf` or `CrLf` for deterministic cross-platform files.
 
 ### Tab-delimited output
 
@@ -188,7 +195,7 @@ var rows = new List<Dictionary<string, object?>>
     new() { ["id"] = 2, ["name"] = "beta", ["active"] = false }
 };
 
-await CsvWriter.WriteAsync(rows, "dynamic.csv");
+await CsvWriter.WriteToFileAsync(rows, "dynamic.csv");
 ```
 
 For heterogeneous dynamic shapes, define a stable schema policy in your application (recommended: union headers + missing fields as empty values).
@@ -205,7 +212,7 @@ await foreach (var row in repository.StreamRowsAsync(ct))
     // produce rows lazily
 }
 
-await CsvWriter.WriteAsync(repository.StreamRowsAsync(ct), "huge-export.csv", cancellationToken: ct);
+await CsvWriter.WriteToFileAsync(repository.StreamRowsAsync(ct), "huge-export.csv", cancellationToken: ct);
 ```
 
 Recommended for:
@@ -314,7 +321,7 @@ Verify `CsvOptions.Delimiter` is set correctly and does not conflict with source
 
 ### Numbers/dates formatted differently than expected
 
-Set `CsvOptions.Culture` explicitly (e.g., `CultureInfo.InvariantCulture`) for consistent formatting across environments.
+Set `CsvOptions.FormatProvider` explicitly (e.g., `CultureInfo.InvariantCulture`) for consistent formatting across environments.
 
 ### Large exports are slow
 
