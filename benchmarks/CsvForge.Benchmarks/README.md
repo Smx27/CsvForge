@@ -1,50 +1,63 @@
 # CsvForge Benchmarks
 
-This project benchmarks CSV serialization throughput and allocations across three dataset sizes:
+This benchmark project compares CsvForge serialization engines using the same dataset across:
 
-- **Small:** 1,000 rows
-- **Medium:** 10,000 rows
-- **Large:** 100,000 rows
+- **Reflection fallback UTF-16 writer** (`EnableRuntimeMetadataFallback = true`)
+- **Generated UTF-16 writer** (`TextWriter` target)
+- **Generated UTF-8 writer to `Stream`**
+- **Generated UTF-8 writer to `IBufferWriter<byte>`**
 
-## Scenarios compared
+The engine matrix is implemented in `GeneratorEngineMatrixBenchmarks`.
 
-1. **Naive reflection baseline (sync/async)**
-   - Looks up values via reflection for every row.
-   - Builds lines with repeated `string` concatenation.
-2. **Optimized CsvForge (sync/async)**
-   - Uses CsvForge's optimized serializer APIs.
+## Scale and scenario matrix
 
-`[MemoryDiagnoser]` is enabled in `Program.cs` so allocation metrics are captured for each benchmark.
+`GeneratorEngineMatrixBenchmarks` runs the following row scales:
+
+- **100,000 rows**
+- **1,000,000 rows**
+
+For each scale, it also runs CSV dialect/escaping scenarios to isolate overhead:
+
+1. `CommaLfNoEscaping` (`Delimiter=,`, `NewLine=LF`, mostly non-escaped payload)
+2. `SemicolonCrLfNoEscaping` (`Delimiter=;`, `NewLine=CRLF`, mostly non-escaped payload)
+3. `CommaCrLfEscaping` (`Delimiter=,`, `NewLine=CRLF`, RFC4180 stress payload with commas, quotes, and embedded newlines)
 
 ## Reproducible command
 
 ```bash
-dotnet run -c Release --project benchmarks/CsvForge.Benchmarks -- --filter "*CsvSerializationBenchmarks*" --job short
+dotnet run -c Release --framework net10.0 --project benchmarks/CsvForge.Benchmarks -- --filter "*GeneratorEngineMatrixBenchmarks*" --job short
 ```
 
-> You can remove `--job short` for a more stable full run.
+> Remove `--job short` for more stable, publication-grade numbers.
 
-## Sample output table
+## Normalized metrics
 
-The exact numbers vary by machine/runtime. The table below shows the expected shape of results (lower is better for `Mean`/`Allocated`, higher is better for `Throughput`).
+Use these formulas with BenchmarkDotNet output:
 
-| Method | RowCount | Mean | Throughput (rows/s) | Allocated |
-|---|---:|---:|---:|---:|
-| NaiveReflectionSync | 1,000 | 1.90 ms | 526,316 | 820 KB |
-| NaiveReflectionAsync | 1,000 | 2.30 ms | 434,783 | 910 KB |
-| CsvForgeOptimizedSync | 1,000 | 0.34 ms | 2,941,176 | 168 KB |
-| CsvForgeOptimizedAsync | 1,000 | 0.42 ms | 2,380,952 | 182 KB |
-| NaiveReflectionSync | 10,000 | 19.8 ms | 505,051 | 8.2 MB |
-| NaiveReflectionAsync | 10,000 | 24.6 ms | 406,504 | 9.1 MB |
-| CsvForgeOptimizedSync | 10,000 | 3.4 ms | 2,941,176 | 1.6 MB |
-| CsvForgeOptimizedAsync | 10,000 | 4.1 ms | 2,439,024 | 1.8 MB |
-| NaiveReflectionSync | 100,000 | 213 ms | 469,484 | 87 MB |
-| NaiveReflectionAsync | 100,000 | 266 ms | 375,940 | 98 MB |
-| CsvForgeOptimizedSync | 100,000 | 35 ms | 2,857,143 | 17 MB |
-| CsvForgeOptimizedAsync | 100,000 | 43 ms | 2,325,581 | 19 MB |
+- `rows/sec = RowCount / MeanSeconds`
+- `normalized rows/sec = method rows/sec / ReflectionFallback_Utf16 rows/sec`
+- `memory ratio = method AllocatedBytes / ReflectionFallback_Utf16 AllocatedBytes`
 
-To compute throughput from BenchmarkDotNet output when needed:
+### Reporting template (fill with your local run)
 
-```text
-Throughput (rows/s) = RowCount / MeanSeconds
-```
+| Scenario | RowCount | Method | Mean | Rows/sec | Normalized Rows/sec (↑ better) | Allocated | Memory Ratio (↓ better) |
+|---|---:|---|---:|---:|---:|---:|---:|
+| CommaLfNoEscaping | 100,000 | ReflectionFallback_Utf16 (baseline) | ... | ... | 1.00x | ... | 1.00x |
+| CommaLfNoEscaping | 100,000 | SourceGenerated_Utf16 | ... | ... | ...x | ... | ...x |
+| CommaLfNoEscaping | 100,000 | SourceGenerated_Utf8_Stream | ... | ... | ...x | ... | ...x |
+| CommaLfNoEscaping | 100,000 | SourceGenerated_Utf8_IBufferWriter | ... | ... | ...x | ... | ...x |
+| SemicolonCrLfNoEscaping | 1,000,000 | ReflectionFallback_Utf16 (baseline) | ... | ... | 1.00x | ... | 1.00x |
+| SemicolonCrLfNoEscaping | 1,000,000 | SourceGenerated_Utf16 | ... | ... | ...x | ... | ...x |
+| SemicolonCrLfNoEscaping | 1,000,000 | SourceGenerated_Utf8_Stream | ... | ... | ...x | ... | ...x |
+| SemicolonCrLfNoEscaping | 1,000,000 | SourceGenerated_Utf8_IBufferWriter | ... | ... | ...x | ... | ...x |
+| CommaCrLfEscaping | 1,000,000 | ReflectionFallback_Utf16 (baseline) | ... | ... | 1.00x | ... | 1.00x |
+| CommaCrLfEscaping | 1,000,000 | SourceGenerated_Utf16 | ... | ... | ...x | ... | ...x |
+| CommaCrLfEscaping | 1,000,000 | SourceGenerated_Utf8_Stream | ... | ... | ...x | ... | ...x |
+| CommaCrLfEscaping | 1,000,000 | SourceGenerated_Utf8_IBufferWriter | ... | ... | ...x | ... | ...x |
+
+## Reading results
+
+- Compare **normalized rows/sec** to see pure throughput deltas versus reflection fallback.
+- Compare **memory ratio** to quantify allocation reductions.
+- Compare `CommaLfNoEscaping` vs `SemicolonCrLfNoEscaping` to isolate delimiter/newline overhead.
+- Compare `*NoEscaping` vs `CommaCrLfEscaping` to quantify RFC4180 escaping overhead.
