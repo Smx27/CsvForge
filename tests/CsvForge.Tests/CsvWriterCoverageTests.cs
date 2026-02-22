@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Buffers;
+using System.IO.Pipelines;
 using System.Text.Json.Serialization;
 using CsvForge;
 using CsvForge.Attributes;
@@ -260,6 +262,46 @@ public class CsvWriterCoverageTests
         var attribute = method!.GetCustomAttribute<RequiresUnreferencedCodeAttribute>();
         Assert.NotNull(attribute);
         Assert.Contains("not trimming-safe", attribute!.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Write_ShouldSupportBufferWriterAndPipeWriterTargets()
+    {
+        var rows = new[] { new DelimitedRow { A = "x", B = "y" } };
+        var options = new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true };
+
+        var arrayBuffer = new ArrayBufferWriter<byte>();
+        CsvWriter.Write(rows, arrayBuffer, options);
+        var fromBufferWriter = options.Encoding.GetString(arrayBuffer.WrittenSpan);
+
+        var pipe = new Pipe();
+        CsvWriter.Write(rows, pipe.Writer, options);
+        var result = pipe.Reader.ReadAsync().GetAwaiter().GetResult();
+        var fromPipeWriter = options.Encoding.GetString(result.Buffer.ToArray());
+        pipe.Reader.AdvanceTo(result.Buffer.End);
+
+        Assert.Equal("A,B\nx,y\n", fromBufferWriter);
+        Assert.Equal("A,B\nx,y\n", fromPipeWriter);
+    }
+
+    [Fact]
+    public async Task WriteAsync_ShouldSupportBufferWriterAndPipeWriterTargets()
+    {
+        var rows = new[] { new DelimitedRow { A = "x", B = "y" } };
+        var options = new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true };
+
+        var arrayBuffer = new ArrayBufferWriter<byte>();
+        await CsvWriter.WriteAsync(rows, arrayBuffer, options);
+        var fromBufferWriter = options.Encoding.GetString(arrayBuffer.WrittenSpan);
+
+        var pipe = new Pipe();
+        await CsvWriter.WriteAsync(rows, pipe.Writer, options);
+        var result = await pipe.Reader.ReadAsync();
+        var fromPipeWriter = options.Encoding.GetString(result.Buffer.ToArray());
+        pipe.Reader.AdvanceTo(result.Buffer.End);
+
+        Assert.Equal("A,B\nx,y\n", fromBufferWriter);
+        Assert.Equal("A,B\nx,y\n", fromPipeWriter);
     }
 
     private static string SerializeSync<T>(IEnumerable<T> rows, CsvOptions options)

@@ -1,6 +1,8 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,9 +19,7 @@ public static class CsvWriter
         options ??= CsvOptions.Default;
 
         using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.Read, options.BufferSize, useAsync: false);
-        using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: false);
-        CsvSerializer.Write(data, writer, options);
-        writer.Flush();
+        Write(data, stream, options);
     }
 
     /// <summary>
@@ -38,40 +38,58 @@ public static class CsvWriter
         ArgumentNullException.ThrowIfNull(stream);
         options ??= CsvOptions.Default;
 
+        if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
+        {
+            var bufferWriter = new StreamBufferWriter(stream);
+            Utf8CsvWriter.Write(data, bufferWriter, options);
+            bufferWriter.Flush();
+            return;
+        }
+
         using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
-        CsvSerializer.Write(data, writer, options);
-        writer.Flush();
+        Utf16CsvWriter.Write(data, writer, options);
     }
 
     public static void Write<T>(IEnumerable<T> data, TextWriter writer, CsvOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(writer);
         options ??= CsvOptions.Default;
+
+        if (CsvEngineSelector.Select(writer) == CsvEngine.Utf16)
+        {
+            Utf16CsvWriter.Write(data, writer, options);
+            return;
+        }
+
         CsvSerializer.Write(data, writer, options);
         writer.Flush();
     }
 
-    /// <summary>
-    /// Asynchronously writes rows from <see cref="IEnumerable{T}"/> to a file at <paramref name="filePath"/>.
-    /// </summary>
+    public static void Write<T>(IEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(bufferWriter);
+        options ??= CsvOptions.Default;
+        Utf8CsvWriter.Write(data, bufferWriter, options);
+    }
+
+    public static void Write<T>(IEnumerable<T> data, PipeWriter writer, CsvOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        options ??= CsvOptions.Default;
+        Utf8CsvWriter.Write(data, writer, options);
+        writer.FlushAsync().GetAwaiter().GetResult();
+    }
+
     public static Task WriteToFileAsync<T>(IEnumerable<T> data, string filePath, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         return WriteEnumerableToPathAsync(data, filePath, options, cancellationToken);
     }
 
-    /// <summary>
-    /// Asynchronously writes rows from <see cref="IAsyncEnumerable{T}"/> to a file at <paramref name="filePath"/>.
-    /// </summary>
     public static Task WriteToFileAsync<T>(IAsyncEnumerable<T> data, string filePath, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         return WriteAsyncEnumerableToPathAsync(data, filePath, options, cancellationToken);
     }
 
-    /// <summary>
-    /// Asynchronously writes rows to a file.
-    /// </summary>
-    /// <remarks>
-    /// Prefer <see cref="WriteToFileAsync{T}(IEnumerable{T}, string, CsvOptions?, CancellationToken)"/> for path-based output.
-    /// </remarks>
     public static Task WriteAsync<T>(IEnumerable<T> data, string path, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         return WriteToFileAsync(data, path, options, cancellationToken);
@@ -82,19 +100,28 @@ public static class CsvWriter
         return WriteEnumerableToStreamAsync(data, stream, options, cancellationToken);
     }
 
-    public static async Task WriteAsync<T>(IEnumerable<T> data, TextWriter writer, CsvOptions? options = null, CancellationToken cancellationToken = default)
+    public static Task WriteAsync<T>(IEnumerable<T> data, TextWriter writer, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(writer);
         options ??= CsvOptions.Default;
-        await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
-        await writer.FlushAsync().ConfigureAwait(false);
+        return Utf16CsvWriter.WriteAsync(data, writer, options, cancellationToken);
     }
 
-    /// <summary>
-    /// Asynchronously writes rows to a file.
-    /// </summary>
-    /// <remarks>
-    /// Prefer <see cref="WriteToFileAsync{T}(IAsyncEnumerable{T}, string, CsvOptions?, CancellationToken)"/> for path-based output.
-    /// </remarks>
+    public static Task WriteAsync<T>(IEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bufferWriter);
+        options ??= CsvOptions.Default;
+        return Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken);
+    }
+
+    public static async Task WriteAsync<T>(IEnumerable<T> data, PipeWriter writer, CsvOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        options ??= CsvOptions.Default;
+        await Utf8CsvWriter.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
+        await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public static Task WriteAsync<T>(IAsyncEnumerable<T> data, string path, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         return WriteToFileAsync(data, path, options, cancellationToken);
@@ -105,11 +132,26 @@ public static class CsvWriter
         return WriteAsyncEnumerableToStreamAsync(data, stream, options, cancellationToken);
     }
 
-    public static async Task WriteAsync<T>(IAsyncEnumerable<T> data, TextWriter writer, CsvOptions? options = null, CancellationToken cancellationToken = default)
+    public static Task WriteAsync<T>(IAsyncEnumerable<T> data, TextWriter writer, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(writer);
         options ??= CsvOptions.Default;
-        await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
-        await writer.FlushAsync().ConfigureAwait(false);
+        return Utf16CsvWriter.WriteAsync(data, writer, options, cancellationToken);
+    }
+
+    public static Task WriteAsync<T>(IAsyncEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bufferWriter);
+        options ??= CsvOptions.Default;
+        return Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken);
+    }
+
+    public static async Task WriteAsync<T>(IAsyncEnumerable<T> data, PipeWriter writer, CsvOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        options ??= CsvOptions.Default;
+        await Utf8CsvWriter.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
+        await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task WriteEnumerableToPathAsync<T>(IEnumerable<T> data, string path, CsvOptions? options, CancellationToken cancellationToken)
@@ -118,9 +160,7 @@ public static class CsvWriter
         options ??= CsvOptions.Default;
 
         await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, options.BufferSize, useAsync: true);
-        await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: false);
-        await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
-        await writer.FlushAsync().ConfigureAwait(false);
+        await WriteAsync(data, stream, options, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task WriteEnumerableToStreamAsync<T>(IEnumerable<T> data, Stream stream, CsvOptions? options, CancellationToken cancellationToken)
@@ -128,9 +168,16 @@ public static class CsvWriter
         ArgumentNullException.ThrowIfNull(stream);
         options ??= CsvOptions.Default;
 
+        if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
+        {
+            var bufferWriter = new StreamBufferWriter(stream);
+            await Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken).ConfigureAwait(false);
+            await bufferWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
-        await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
-        await writer.FlushAsync().ConfigureAwait(false);
+        await Utf16CsvWriter.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task WriteAsyncEnumerableToPathAsync<T>(IAsyncEnumerable<T> data, string path, CsvOptions? options, CancellationToken cancellationToken)
@@ -139,9 +186,7 @@ public static class CsvWriter
         options ??= CsvOptions.Default;
 
         await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, options.BufferSize, useAsync: true);
-        await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: false);
-        await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
-        await writer.FlushAsync().ConfigureAwait(false);
+        await WriteAsync(data, stream, options, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task WriteAsyncEnumerableToStreamAsync<T>(IAsyncEnumerable<T> data, Stream stream, CsvOptions? options, CancellationToken cancellationToken)
@@ -149,8 +194,89 @@ public static class CsvWriter
         ArgumentNullException.ThrowIfNull(stream);
         options ??= CsvOptions.Default;
 
+        if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
+        {
+            var bufferWriter = new StreamBufferWriter(stream);
+            await Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken).ConfigureAwait(false);
+            await bufferWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
-        await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
-        await writer.FlushAsync().ConfigureAwait(false);
+        await Utf16CsvWriter.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
+    }
+
+    private sealed class StreamBufferWriter : IBufferWriter<byte>
+    {
+        private readonly Stream _stream;
+        private byte[] _buffer;
+        private int _written;
+
+        public StreamBufferWriter(Stream stream)
+        {
+            _stream = stream;
+            _buffer = new byte[16 * 1024];
+        }
+
+        public void Advance(int count)
+        {
+            _written += count;
+            if (_written >= _buffer.Length)
+            {
+                Flush();
+            }
+        }
+
+        public Memory<byte> GetMemory(int sizeHint = 0)
+        {
+            Ensure(sizeHint);
+            return _buffer.AsMemory(_written);
+        }
+
+        public Span<byte> GetSpan(int sizeHint = 0)
+        {
+            Ensure(sizeHint);
+            return _buffer.AsSpan(_written);
+        }
+
+        public void Flush()
+        {
+            if (_written == 0)
+            {
+                return;
+            }
+
+            _stream.Write(_buffer, 0, _written);
+            _written = 0;
+        }
+
+        public async Task FlushAsync(CancellationToken cancellationToken)
+        {
+            if (_written == 0)
+            {
+                return;
+            }
+
+            await _stream.WriteAsync(_buffer.AsMemory(0, _written), cancellationToken).ConfigureAwait(false);
+            _written = 0;
+        }
+
+        private void Ensure(int sizeHint)
+        {
+            sizeHint = Math.Max(1, sizeHint);
+
+            if (_buffer.Length - _written >= sizeHint)
+            {
+                return;
+            }
+
+            Flush();
+            if (_buffer.Length >= sizeHint)
+            {
+                return;
+            }
+
+            _buffer = new byte[Math.Max(_buffer.Length * 2, sizeHint)];
+        }
     }
 }
