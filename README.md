@@ -129,6 +129,27 @@ Defaults today:
 
 Use `NewLineBehavior = CsvNewLineBehavior.Lf` or `CrLf` for deterministic cross-platform files.
 
+### Excel compatibility mode
+
+For Excel-first exports, enable `ExcelCompatibility`:
+
+```csharp
+var options = new CsvOptions
+{
+    ExcelCompatibility = true
+};
+
+CsvWriter.Write(data, stream, options);
+```
+
+Semantics:
+- Defaults row terminators to `\r\n` when no explicit newline is provided.
+- Uses `;` delimiter fallback for cultures with decimal comma (for example `fr-FR`) when delimiter remains default `,`.
+- Emits UTF-8 BOM for stream/file targets.
+- Normalizes embedded newlines inside escaped fields to CRLF while preserving quote escaping (`""`).
+
+You can override row terminators explicitly using `ExplicitNewLine` (for example, `"\r\n"`).
+
 ### Compressed output (GZip / ZIP)
 
 ```csharp

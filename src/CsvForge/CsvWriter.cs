@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.IO.Pipelines;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CsvForge.Checkpoint;
@@ -19,6 +20,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(filePath);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: true);
 
         using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.Read, options.BufferSize, useAsync: false);
         Write(data, stream, options);
@@ -39,6 +41,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(stream);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: true);
 
         using var output = CreateOutputStream(stream, options, useAsync: false);
         WriteToPreparedStream(data, output.Stream, options);
@@ -48,6 +51,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(writer);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
 
         if (CsvEngineSelector.Select(writer) == CsvEngine.Utf16)
         {
@@ -63,6 +67,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(bufferWriter);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         Utf8CsvWriter.Write(data, bufferWriter, options);
     }
 
@@ -70,6 +75,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(bufferWriter);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken).GetAwaiter().GetResult();
     }
 
@@ -77,6 +83,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(writer);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         Utf8CsvWriter.Write(data, writer, options);
         writer.FlushAsync().GetAwaiter().GetResult();
     }
@@ -85,6 +92,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(writer);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         Utf8CsvWriter.WriteAsync(data, writer, options, cancellationToken).GetAwaiter().GetResult();
         writer.FlushAsync(cancellationToken).GetAwaiter().GetResult();
     }
@@ -97,7 +105,7 @@ public static class CsvWriter
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
 
-        var csvOptions = options.CsvOptions ?? CsvOptions.Default;
+        var csvOptions = CsvOptions.NormalizeForWrite(options.CsvOptions ?? CsvOptions.Default, streamOrFileTarget: true);
         var coordinator = new CsvCheckpointCoordinator(options.CheckpointFilePath, options.TempFileStrategy);
         var checkpointIndex = options.ResumeIfExists ? await coordinator.LoadAsync(CancellationToken.None).ConfigureAwait(false) : -1;
 
@@ -143,6 +151,11 @@ public static class CsvWriter
         if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
         {
             var bufferWriter = new StreamBufferWriter(stream);
+            if (stream.CanSeek && stream.Position == 0)
+            {
+                WriteUtf8BomIfNeeded(bufferWriter, options);
+            }
+
             await Utf8CsvWriter.WriteAsync(batch, bufferWriter, options, CancellationToken.None).ConfigureAwait(false);
             await bufferWriter.FlushAsync(CancellationToken.None).ConfigureAwait(false);
         }
@@ -180,6 +193,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(writer);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         return Utf16CsvWriter.WriteAsync(data, writer, options, cancellationToken);
     }
 
@@ -187,6 +201,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(bufferWriter);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         return Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken);
     }
 
@@ -194,6 +209,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(writer);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         await Utf8CsvWriter.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
         await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -212,6 +228,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(writer);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         return Utf16CsvWriter.WriteAsync(data, writer, options, cancellationToken);
     }
 
@@ -219,6 +236,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(bufferWriter);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         return Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken);
     }
 
@@ -226,6 +244,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(writer);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         await Utf8CsvWriter.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
         await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -234,6 +253,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(path);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: true);
 
         await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, options.BufferSize, useAsync: true);
         await WriteAsync(data, stream, options, cancellationToken).ConfigureAwait(false);
@@ -243,6 +263,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(stream);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: true);
 
         await using var output = CreateOutputStream(stream, options, useAsync: true);
         await WriteToPreparedStreamAsync(data, output.Stream, options, cancellationToken).ConfigureAwait(false);
@@ -252,6 +273,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(path);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: true);
 
         await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, options.BufferSize, useAsync: true);
         await WriteAsync(data, stream, options, cancellationToken).ConfigureAwait(false);
@@ -261,6 +283,7 @@ public static class CsvWriter
     {
         ArgumentNullException.ThrowIfNull(stream);
         options ??= CsvOptions.Default;
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: true);
 
         await using var output = CreateOutputStream(stream, options, useAsync: true);
         await WriteToPreparedStreamAsync(data, output.Stream, options, cancellationToken).ConfigureAwait(false);
@@ -272,6 +295,7 @@ public static class CsvWriter
         if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
         {
             var bufferWriter = new StreamBufferWriter(stream);
+            WriteUtf8BomIfNeeded(bufferWriter, options);
             Utf8CsvWriter.Write(data, bufferWriter, options);
             bufferWriter.Flush();
             return;
@@ -286,6 +310,7 @@ public static class CsvWriter
         if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
         {
             var bufferWriter = new StreamBufferWriter(stream);
+            WriteUtf8BomIfNeeded(bufferWriter, options);
             await Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken).ConfigureAwait(false);
             await bufferWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
             return;
@@ -300,6 +325,7 @@ public static class CsvWriter
         if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
         {
             var bufferWriter = new StreamBufferWriter(stream);
+            WriteUtf8BomIfNeeded(bufferWriter, options);
             await Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken).ConfigureAwait(false);
             await bufferWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
             return;
@@ -307,6 +333,25 @@ public static class CsvWriter
 
         await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
         await Utf16CsvWriter.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
+    }
+
+
+    private static void WriteUtf8BomIfNeeded(System.Buffers.IBufferWriter<byte> writer, CsvOptions options)
+    {
+        if (!options.EmitUtf8Bom || options.Encoding.CodePage != Encoding.UTF8.CodePage)
+        {
+            return;
+        }
+
+        var preamble = options.Encoding.GetPreamble();
+        if (preamble.Length == 0)
+        {
+            return;
+        }
+
+        var span = writer.GetSpan(preamble.Length);
+        preamble.CopyTo(span);
+        writer.Advance(preamble.Length);
     }
 
     private static OutputStreamContext CreateOutputStream(Stream destination, CsvOptions options, bool useAsync)
