@@ -22,6 +22,13 @@ internal static class CsvSerializer
             return;
         }
 
+        var generatedWriter = CsvTypeWriterCache<T>.Resolve();
+        if (generatedWriter is not null)
+        {
+            WriteWithGeneratedWriter(data, writer, options, generatedWriter);
+            return;
+        }
+
         var metadata = TypeMetadataCache.GetOrAdd<T>();
         var newLine = options.NewLine;
         using var context = new CsvSerializationContext(options);
@@ -46,6 +53,13 @@ internal static class CsvSerializer
             var rowsWritten = await DynamicCsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
             var profileScope = CsvProfilingHooks.Start(0);
             profileScope.Complete(rowsWritten);
+            return;
+        }
+
+        var generatedWriter = CsvTypeWriterCache<T>.Resolve();
+        if (generatedWriter is not null)
+        {
+            await WriteWithGeneratedWriterAsync(data, writer, options, generatedWriter, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -76,6 +90,13 @@ internal static class CsvSerializer
             return;
         }
 
+        var generatedWriter = CsvTypeWriterCache<T>.Resolve();
+        if (generatedWriter is not null)
+        {
+            await WriteWithGeneratedWriterAsync(data, writer, options, generatedWriter, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         var metadata = TypeMetadataCache.GetOrAdd<T>();
         var newLine = options.NewLine;
         using var context = new CsvSerializationContext(options);
@@ -96,6 +117,68 @@ internal static class CsvSerializer
         profileScope.Complete(rowsWritten);
     }
 
+
+
+    private static void WriteWithGeneratedWriter<T>(IEnumerable<T> data, TextWriter writer, CsvOptions options, ICsvTypeWriter<T> typeWriter)
+    {
+        if (options.IncludeHeader)
+        {
+            typeWriter.WriteHeader(writer, options);
+            writer.Write(options.NewLine);
+        }
+
+        var rowsWritten = 0;
+        foreach (var item in data)
+        {
+            typeWriter.WriteRow(writer, item, options);
+            writer.Write(options.NewLine);
+            rowsWritten++;
+        }
+
+        var profileScope = CsvProfilingHooks.Start(0);
+        profileScope.Complete(rowsWritten);
+    }
+
+    private static async Task WriteWithGeneratedWriterAsync<T>(IEnumerable<T> data, TextWriter writer, CsvOptions options, ICsvTypeWriter<T> typeWriter, CancellationToken cancellationToken)
+    {
+        if (options.IncludeHeader)
+        {
+            await typeWriter.WriteHeaderAsync(writer, options, cancellationToken).ConfigureAwait(false);
+            await writer.WriteAsync(options.NewLine.AsMemory()).ConfigureAwait(false);
+        }
+
+        var rowsWritten = 0;
+        foreach (var item in data)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await typeWriter.WriteRowAsync(writer, item, options, cancellationToken).ConfigureAwait(false);
+            await writer.WriteAsync(options.NewLine.AsMemory()).ConfigureAwait(false);
+            rowsWritten++;
+        }
+
+        var profileScope = CsvProfilingHooks.Start(0);
+        profileScope.Complete(rowsWritten);
+    }
+
+    private static async Task WriteWithGeneratedWriterAsync<T>(IAsyncEnumerable<T> data, TextWriter writer, CsvOptions options, ICsvTypeWriter<T> typeWriter, CancellationToken cancellationToken)
+    {
+        if (options.IncludeHeader)
+        {
+            await typeWriter.WriteHeaderAsync(writer, options, cancellationToken).ConfigureAwait(false);
+            await writer.WriteAsync(options.NewLine.AsMemory()).ConfigureAwait(false);
+        }
+
+        var rowsWritten = 0;
+        await foreach (var item in data.WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            await typeWriter.WriteRowAsync(writer, item, options, cancellationToken).ConfigureAwait(false);
+            await writer.WriteAsync(options.NewLine.AsMemory()).ConfigureAwait(false);
+            rowsWritten++;
+        }
+
+        var profileScope = CsvProfilingHooks.Start(0);
+        profileScope.Complete(rowsWritten);
+    }
     private static int WriteRows<T>(IEnumerable<T> data, TextWriter writer, TypeMetadata<T> metadata, CsvSerializationContext context, string newLine)
     {
         if (data is T[] array)
