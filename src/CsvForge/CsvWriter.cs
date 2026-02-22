@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
+using CsvForge.Checkpoint;
 
 namespace CsvForge;
 
@@ -93,6 +94,73 @@ public static class CsvWriter
         options ??= CsvOptions.Default;
         Utf8CsvWriter.WriteAsync(data, writer, options, cancellationToken).GetAwaiter().GetResult();
         writer.FlushAsync(cancellationToken).GetAwaiter().GetResult();
+    }
+
+
+    public static async Task WriteWithCheckpointAsync<T>(IAsyncEnumerable<T> data, string path, CsvCheckpointOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
+
+        var csvOptions = options.CsvOptions ?? CsvOptions.Default;
+        var coordinator = new CsvCheckpointCoordinator(options.CheckpointFilePath, options.TempFileStrategy);
+        var checkpointIndex = options.ResumeIfExists ? await coordinator.LoadAsync(CancellationToken.None).ConfigureAwait(false) : -1;
+
+        var includeHeader = csvOptions.IncludeHeader && !(options.ResumeIfExists && checkpointIndex >= 0 && File.Exists(path));
+        var writeOptions = csvOptions with { IncludeHeader = includeHeader };
+        var fileMode = options.ResumeIfExists && checkpointIndex >= 0 && File.Exists(path) ? FileMode.Append : FileMode.Create;
+
+        await using var stream = new FileStream(path, fileMode, FileAccess.Write, FileShare.Read, csvOptions.BufferSize, useAsync: true);
+
+        var batch = new List<T>(options.BatchSize);
+        var nextRowIndex = 0L;
+        var lastFlushUtc = DateTime.UtcNow;
+
+        await foreach (var item in data.ConfigureAwait(false))
+        {
+            if (nextRowIndex <= checkpointIndex)
+            {
+                nextRowIndex++;
+                continue;
+            }
+
+            batch.Add(item);
+            nextRowIndex++;
+
+            if (batch.Count >= options.BatchSize || (options.FlushInterval > TimeSpan.Zero && DateTime.UtcNow - lastFlushUtc >= options.FlushInterval))
+            {
+                await FlushBatchAsync(batch, stream, writeOptions).ConfigureAwait(false);
+                await coordinator.PersistAsync(nextRowIndex - 1, CancellationToken.None).ConfigureAwait(false);
+                lastFlushUtc = DateTime.UtcNow;
+                writeOptions = writeOptions with { IncludeHeader = false };
+            }
+        }
+
+        if (batch.Count > 0)
+        {
+            await FlushBatchAsync(batch, stream, writeOptions).ConfigureAwait(false);
+            await coordinator.PersistAsync(nextRowIndex - 1, CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task FlushBatchAsync<T>(List<T> batch, Stream stream, CsvOptions options)
+    {
+        if (CsvEngineSelector.Select(stream) == CsvEngine.Utf8)
+        {
+            var bufferWriter = new StreamBufferWriter(stream);
+            await Utf8CsvWriter.WriteAsync(batch, bufferWriter, options, CancellationToken.None).ConfigureAwait(false);
+            await bufferWriter.FlushAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        else
+        {
+            await using var writer = new StreamWriter(stream, options.Encoding, options.StreamWriterBufferSize, leaveOpen: true);
+            await Utf16CsvWriter.WriteAsync(batch, writer, options, CancellationToken.None).ConfigureAwait(false);
+            await writer.FlushAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+
+        batch.Clear();
     }
 
     public static Task WriteToFileAsync<T>(IEnumerable<T> data, string filePath, CsvOptions? options = null, CancellationToken cancellationToken = default)
