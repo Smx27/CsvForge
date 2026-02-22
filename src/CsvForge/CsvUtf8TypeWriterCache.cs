@@ -1,6 +1,4 @@
 using System;
-using System.Linq;
-using System.Reflection;
 using System.Threading;
 
 namespace CsvForge;
@@ -8,44 +6,27 @@ namespace CsvForge;
 public static class CsvUtf8TypeWriterCache<T>
 {
     private static ICsvUtf8TypeWriter<T>? _writer;
-    private static int _resolved;
 
     public static ICsvUtf8TypeWriter<T>? Resolve()
     {
-        var existing = Volatile.Read(ref _writer);
-        if (existing is not null)
-        {
-            return existing;
-        }
+        var registered = Volatile.Read(ref _writer);
+        return registered ?? GeneratedRegistration<T>.Writer;
+    }
 
-        if (Interlocked.Exchange(ref _resolved, 1) != 0)
-        {
-            return null;
-        }
+    public static void Register(ICsvUtf8TypeWriter<T> writer)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        Volatile.Write(ref _writer, writer);
+    }
 
-        var contract = typeof(ICsvUtf8TypeWriter<T>);
-        var implementation = typeof(T).Assembly
-            .GetTypes()
-            .FirstOrDefault(type => !type.IsAbstract && !type.IsInterface && contract.IsAssignableFrom(type));
+    internal static void RegisterGenerated(ICsvUtf8TypeWriter<T> writer)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        GeneratedRegistration<T>.Writer = writer;
+    }
 
-        if (implementation is null)
-        {
-            return null;
-        }
-
-        var instanceField = implementation.GetField("Instance", BindingFlags.Public | BindingFlags.Static);
-        if (instanceField?.GetValue(null) is ICsvUtf8TypeWriter<T> instance)
-        {
-            Volatile.Write(ref _writer, instance);
-            return instance;
-        }
-
-        if (Activator.CreateInstance(implementation) is ICsvUtf8TypeWriter<T> created)
-        {
-            Volatile.Write(ref _writer, created);
-            return created;
-        }
-
-        return null;
+    private static class GeneratedRegistration<TType>
+    {
+        public static ICsvUtf8TypeWriter<TType>? Writer;
     }
 }
