@@ -206,6 +206,38 @@ public class CsvWriterCoverageTests
         Assert.Contains("EnableRuntimeMetadataFallback", exception.Message, StringComparison.Ordinal);
     }
 
+
+    [Fact]
+    public async Task WriteToFileAndWriteToFileAsync_ShouldWriteExpectedCsv()
+    {
+        var rows = new[] { new DelimitedRow { A = "x", B = "y" } };
+        var options = new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true };
+
+        var syncPath = Path.Combine(Path.GetTempPath(), $"csvforge-sync-{Guid.NewGuid():N}.csv");
+        var asyncPath = Path.Combine(Path.GetTempPath(), $"csvforge-async-{Guid.NewGuid():N}.csv");
+
+        try
+        {
+            CsvWriter.WriteToFile(rows, syncPath, options);
+            await CsvWriter.WriteToFileAsync(rows, asyncPath, options);
+
+            Assert.Equal("A,B\nx,y\n", File.ReadAllText(syncPath));
+            Assert.Equal("A,B\nx,y\n", File.ReadAllText(asyncPath));
+        }
+        finally
+        {
+            if (File.Exists(syncPath))
+            {
+                File.Delete(syncPath);
+            }
+
+            if (File.Exists(asyncPath))
+            {
+                File.Delete(asyncPath);
+            }
+        }
+    }
+
     [Fact]
     public void Write_ShouldUseRegisteredGeneratedWriterWithoutRuntimeFallback()
     {

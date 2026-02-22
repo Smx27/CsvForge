@@ -27,5 +27,6 @@
 
   <ItemGroup>
     <None Include="GoldenFiles\*.g.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="ApiApproval\*.approved.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
