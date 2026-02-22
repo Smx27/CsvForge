@@ -32,6 +32,11 @@ public partial record Order([property: CsvForge.Attributes.CsvColumn(\"id\", Ord
         var utf8GeneratedText = utf8Generated.GetText().ToString().Trim();
         var utf8ExpectedText = File.ReadAllText(Path.Combine(GetProjectRoot(), "tests", "CsvForge.Tests", "GoldenFiles", "Order_CsvUtf8Writer.g.cs")).Trim();
         Assert.Equal(utf8ExpectedText, utf8GeneratedText);
+
+        var registrationGenerated = result.GeneratedTrees.Single(tree => tree.FilePath.EndsWith("Order_CsvWriterRegistration.g.cs", System.StringComparison.Ordinal));
+        var registrationGeneratedText = registrationGenerated.GetText().ToString().Trim();
+        var registrationExpectedText = File.ReadAllText(Path.Combine(GetProjectRoot(), "tests", "CsvForge.Tests", "GoldenFiles", "Order_CsvWriterRegistration.g.cs")).Trim();
+        Assert.Equal(registrationExpectedText, registrationGeneratedText);
     }
 
 
@@ -122,6 +127,7 @@ public partial class DualWriter
         var result = RunGenerator(input);
         Assert.Contains(result.GeneratedTrees, tree => tree.FilePath.EndsWith("DualWriter_CsvUtf8Writer.g.cs", System.StringComparison.Ordinal));
         Assert.Contains(result.GeneratedTrees, tree => tree.FilePath.EndsWith("DualWriter_CsvUtf16Writer.g.cs", System.StringComparison.Ordinal));
+        Assert.Contains(result.GeneratedTrees, tree => tree.FilePath.EndsWith("DualWriter_CsvWriterRegistration.g.cs", System.StringComparison.Ordinal));
     }
 
     [Fact]

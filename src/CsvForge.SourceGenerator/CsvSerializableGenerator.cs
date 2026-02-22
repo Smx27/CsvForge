@@ -192,6 +192,33 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
 
         context.AddSource($"{writerBaseName}_CsvUtf16Writer.g.cs", SourceText.From(BuildUtf16Writer(ns, targetType, writerBaseName, columns), Encoding.UTF8));
         context.AddSource($"{writerBaseName}_CsvUtf8Writer.g.cs", SourceText.From(BuildUtf8Writer(ns, targetType, writerBaseName, columns), Encoding.UTF8));
+        context.AddSource($"{writerBaseName}_CsvWriterRegistration.g.cs", SourceText.From(BuildRegistrationModule(ns, targetType, writerBaseName), Encoding.UTF8));
+    }
+
+    private static string BuildRegistrationModule(string? ns, string targetType, string writerBaseName)
+    {
+        var utf16WriterTypeName = writerBaseName + "_CsvUtf16Writer";
+        var utf8WriterTypeName = writerBaseName + "_CsvUtf8Writer";
+        var source = new StringBuilder();
+        source.AppendLine("using System.Runtime.CompilerServices;");
+
+        if (ns is not null)
+        {
+            source.Append("namespace ").Append(ns).AppendLine(";");
+            source.AppendLine();
+        }
+
+        source.Append("file static class ").Append(writerBaseName).AppendLine("_CsvWriterRegistration")
+            .AppendLine("{")
+            .AppendLine("    [ModuleInitializer]")
+            .AppendLine("    internal static void Register()")
+            .AppendLine("    {")
+            .Append("        global::CsvForge.CsvTypeWriterCache<").Append(targetType).Append(">.RegisterGenerated(").Append(utf16WriterTypeName).AppendLine(".Instance);")
+            .Append("        global::CsvForge.CsvUtf8TypeWriterCache<").Append(targetType).Append(">.RegisterGenerated(").Append(utf8WriterTypeName).AppendLine(".Instance);")
+            .AppendLine("    }")
+            .AppendLine("}");
+
+        return source.ToString();
     }
 
     private static string BuildUtf16Writer(string? ns, string targetType, string writerBaseName, List<ColumnModel> columns)
