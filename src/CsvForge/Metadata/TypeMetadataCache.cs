@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json.Serialization;
 using CsvForge.Attributes;
+using CsvForge.Shared;
 
 namespace CsvForge.Metadata;
 
@@ -34,13 +35,17 @@ internal static class TypeMetadataCache
     {
         var columns = typeof(T)
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .Where(static property => property.CanRead && property.GetMethod is not null)
+            .Where(static property => ColumnSelectionRules.ShouldIncludeProperty(
+                property.CanRead,
+                property.GetMethod is not null,
+                property.GetMethod?.IsPublic == true,
+                property.GetMethod?.IsStatic == true,
+                property.GetIndexParameters().Length > 0,
+                property.GetCustomAttribute<CsvIgnoreAttribute>() is not null))
             .Select(BuildColumnMetadata<T>)
-            .OrderBy(static column => column.Order.HasValue ? 0 : 1)
-            .ThenBy(static column => column.Order)
-            .ThenBy(static column => column.DeclarationOrder)
-            .ThenBy(static column => column.PropertyName, StringComparer.Ordinal)
             .ToArray();
+
+        Array.Sort(columns, static (left, right) => ColumnSelectionRules.Compare(left.SortKey, right.SortKey));
 
         var typedColumns = new IColumnWriter<T>[columns.Length];
         for (var i = 0; i < columns.Length; i++)
@@ -55,13 +60,17 @@ internal static class TypeMetadataCache
     {
         var columns = type
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .Where(static property => property.CanRead && property.GetMethod is not null)
+            .Where(static property => ColumnSelectionRules.ShouldIncludeProperty(
+                property.CanRead,
+                property.GetMethod is not null,
+                property.GetMethod?.IsPublic == true,
+                property.GetMethod?.IsStatic == true,
+                property.GetIndexParameters().Length > 0,
+                property.GetCustomAttribute<CsvIgnoreAttribute>() is not null))
             .Select(BuildRuntimeColumnMetadata)
-            .OrderBy(static column => column.Order.HasValue ? 0 : 1)
-            .ThenBy(static column => column.Order)
-            .ThenBy(static column => column.DeclarationOrder)
-            .ThenBy(static column => column.PropertyName, StringComparer.Ordinal)
             .ToArray();
+
+        Array.Sort(columns, static (left, right) => ColumnSelectionRules.Compare(left.SortKey, right.SortKey));
 
         var columnLookup = new Dictionary<string, Func<object, object?>>(columns.Length, StringComparer.Ordinal);
         for (var i = 0; i < columns.Length; i++)
@@ -95,9 +104,7 @@ internal static class TypeMetadataCache
         var csvAttribute = property.GetCustomAttribute<CsvColumnAttribute>();
         var jsonAttribute = property.GetCustomAttribute<JsonPropertyNameAttribute>();
 
-        var columnName = csvAttribute?.Name
-            ?? jsonAttribute?.Name
-            ?? property.Name;
+        var columnName = ColumnSelectionRules.ResolveColumnName(csvAttribute?.Name, jsonAttribute?.Name, property.Name);
 
         return new ColumnDetails(
             property.Name,
@@ -137,7 +144,10 @@ internal sealed record RuntimeColumnDefinition(
     string ColumnName,
     int? Order,
     int DeclarationOrder,
-    Func<object, object?> Getter);
+    Func<object, object?> Getter)
+{
+    public ColumnOrderKey SortKey => new(Order, DeclarationOrder, PropertyName);
+}
 
 internal sealed record ColumnDetails(string PropertyName, string ColumnName, int? Order, int DeclarationOrder);
 
@@ -159,6 +169,8 @@ internal sealed record ColumnDefinition<T>(
     int DeclarationOrder,
     PropertyInfo Property)
 {
+    public ColumnOrderKey SortKey => new(Order, DeclarationOrder, PropertyName);
+
     public IColumnWriter<T> CreateWriter()
     {
         return new ReflectiveColumnWriter<T>(ColumnName, Property);

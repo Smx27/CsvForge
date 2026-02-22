@@ -6,6 +6,7 @@ using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using CsvForge.Shared;
 
 namespace CsvForge.SourceGenerator;
 
@@ -101,9 +102,22 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
                 continue;
             }
 
-            if (property.IsStatic || property.GetMethod is null || property.GetMethod.DeclaredAccessibility != Accessibility.Public || property.Parameters.Length > 0)
+            var hasIgnore = HasCsvIgnore(property);
+            var include = ColumnSelectionRules.ShouldIncludeProperty(
+                canRead: true,
+                hasGetter: property.GetMethod is not null,
+                isPublicGetter: property.GetMethod?.DeclaredAccessibility == Accessibility.Public,
+                isStatic: property.IsStatic,
+                isIndexer: property.Parameters.Length > 0,
+                hasCsvIgnoreAttribute: hasIgnore);
+
+            if (!include)
             {
-                context.ReportDiagnostic(Diagnostic.Create(UnsupportedProperty, property.Locations.FirstOrDefault(), property.Name, symbol.ToDisplayString()));
+                if (!hasIgnore)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(UnsupportedProperty, property.Locations.FirstOrDefault(), property.Name, symbol.ToDisplayString()));
+                }
+
                 continue;
             }
 
@@ -114,12 +128,8 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
             result.Add(new ColumnModel(property.Name, name, order, property.Type, isNullable, property.Locations.FirstOrDefault()?.SourceSpan.Start ?? int.MaxValue));
         }
 
-        return result
-            .OrderBy(static c => c.Order.HasValue ? 0 : 1)
-            .ThenBy(static c => c.Order)
-            .ThenBy(static c => c.DeclarationOrder)
-            .ThenBy(static c => c.PropertyName, StringComparer.Ordinal)
-            .ToList();
+        result.Sort(static (left, right) => ColumnSelectionRules.Compare(left.SortKey, right.SortKey));
+        return result;
     }
 
     private static int? GetOrder(IPropertySymbol property)
@@ -145,21 +155,38 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
 
     private static string GetName(IPropertySymbol property)
     {
+        string? csvColumnName = null;
+        string? jsonPropertyName = null;
+
         foreach (var attr in property.GetAttributes())
         {
             var typeName = attr.AttributeClass?.ToDisplayString();
             if (typeName == "CsvForge.Attributes.CsvColumnAttribute" && attr.ConstructorArguments.Length == 1 && attr.ConstructorArguments[0].Value is string csvName)
             {
-                return csvName;
+                csvColumnName = csvName;
+                continue;
             }
 
             if (typeName == "System.Text.Json.Serialization.JsonPropertyNameAttribute" && attr.ConstructorArguments.Length == 1 && attr.ConstructorArguments[0].Value is string jsonName)
             {
-                return jsonName;
+                jsonPropertyName = jsonName;
             }
         }
 
-        return property.Name;
+        return ColumnSelectionRules.ResolveColumnName(csvColumnName, jsonPropertyName, property.Name);
+    }
+
+    private static bool HasCsvIgnore(IPropertySymbol property)
+    {
+        foreach (var attr in property.GetAttributes())
+        {
+            if (attr.AttributeClass?.ToDisplayString() == "CsvForge.Attributes.CsvIgnoreAttribute")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void EmitWriter(SourceProductionContext context, INamedTypeSymbol symbol, List<ColumnModel> columns)
@@ -300,5 +327,9 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
 
     private static string Escape(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
-    private sealed record ColumnModel(string PropertyName, string ColumnName, int? Order, ITypeSymbol Type, bool IsNullable, int DeclarationOrder);
+    private sealed record ColumnModel(string PropertyName, string ColumnName, int? Order, ITypeSymbol Type, bool IsNullable, int DeclarationOrder)
+    {
+        public ColumnOrderKey SortKey => new(Order, DeclarationOrder, PropertyName);
+    }
+
 }
