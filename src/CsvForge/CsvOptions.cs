@@ -11,6 +11,20 @@ public enum CsvNewLineBehavior
     CrLf
 }
 
+public enum CsvHeterogeneousHeaderBehavior
+{
+    /// <summary>
+    /// Builds headers from the union of all encountered row shapes.
+    /// </summary>
+    Union,
+
+    /// <summary>
+    /// Locks headers to the first encountered non-empty row shape.
+    /// Additional fields from subsequent rows are ignored.
+    /// </summary>
+    FirstShapeLock
+}
+
 public sealed class CsvOptions
 {
     public static CsvOptions Default { get; } = new();
@@ -28,6 +42,11 @@ public sealed class CsvOptions
     public IFormatProvider FormatProvider { get; init; } = CultureInfo.InvariantCulture;
 
     public CsvNewLineBehavior NewLineBehavior { get; init; } = CsvNewLineBehavior.Environment;
+
+    /// <summary>
+    /// Controls header generation when serializing heterogeneous rows (for example, <c>IEnumerable&lt;object&gt;</c> or dictionary-based rows).
+    /// </summary>
+    public CsvHeterogeneousHeaderBehavior HeterogeneousHeaderBehavior { get; init; } = CsvHeterogeneousHeaderBehavior.Union;
 
     internal string NewLine => NewLineBehavior switch
     {

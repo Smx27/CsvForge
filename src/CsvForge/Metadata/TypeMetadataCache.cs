@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
@@ -14,10 +15,16 @@ namespace CsvForge.Metadata;
 internal static class TypeMetadataCache
 {
     private static readonly ConcurrentDictionary<Type, object> TypedCache = new();
+    private static readonly ConcurrentDictionary<Type, RuntimeTypeMetadata> RuntimeCache = new();
 
     public static TypeMetadata<T> GetOrAdd<T>()
     {
         return (TypeMetadata<T>)TypedCache.GetOrAdd(typeof(T), static _ => BuildTypeMetadata<T>());
+    }
+
+    public static RuntimeTypeMetadata GetOrAddRuntime(Type type)
+    {
+        return RuntimeCache.GetOrAdd(type, BuildRuntimeTypeMetadata);
     }
 
     private static TypeMetadata<T> BuildTypeMetadata<T>()
@@ -41,7 +48,47 @@ internal static class TypeMetadataCache
         return new TypeMetadata<T>(typedColumns);
     }
 
+    private static RuntimeTypeMetadata BuildRuntimeTypeMetadata(Type type)
+    {
+        var columns = type
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Where(static property => property.CanRead && property.GetMethod is not null)
+            .Select(BuildRuntimeColumnMetadata)
+            .OrderBy(static column => column.Order.HasValue ? 0 : 1)
+            .ThenBy(static column => column.Order)
+            .ThenBy(static column => column.DeclarationOrder)
+            .ThenBy(static column => column.PropertyName, StringComparer.Ordinal)
+            .ToArray();
+
+        var columnLookup = new Dictionary<string, Func<object, object?>>(columns.Length, StringComparer.Ordinal);
+        for (var i = 0; i < columns.Length; i++)
+        {
+            columnLookup[columns[i].ColumnName] = columns[i].Getter;
+        }
+
+        return new RuntimeTypeMetadata(columns, columnLookup);
+    }
+
     private static ColumnDefinition<T> BuildColumnMetadata<T>(PropertyInfo property)
+    {
+        var details = GetColumnDetails(property);
+
+        return new ColumnDefinition<T>(
+            details.PropertyName,
+            details.ColumnName,
+            details.Order,
+            details.DeclarationOrder,
+            property,
+            BuildGetter<T>(property));
+    }
+
+    private static RuntimeColumnDefinition BuildRuntimeColumnMetadata(PropertyInfo property)
+    {
+        var details = GetColumnDetails(property);
+        return new RuntimeColumnDefinition(details.PropertyName, details.ColumnName, details.Order, details.DeclarationOrder, BuildRuntimeGetter(property));
+    }
+
+    private static ColumnDetails GetColumnDetails(PropertyInfo property)
     {
         var csvAttribute = property.GetCustomAttribute<CsvColumnAttribute>();
         var jsonAttribute = property.GetCustomAttribute<JsonPropertyNameAttribute>();
@@ -50,13 +97,20 @@ internal static class TypeMetadataCache
             ?? jsonAttribute?.Name
             ?? property.Name;
 
-        return new ColumnDefinition<T>(
+        return new ColumnDetails(
             property.Name,
             columnName,
             csvAttribute?.Order,
-            GetDeclarationOrder(property),
-            property,
-            BuildGetter<T>(property));
+            GetDeclarationOrder(property));
+    }
+
+    private static Func<object, object?> BuildRuntimeGetter(PropertyInfo property)
+    {
+        var instance = Expression.Parameter(typeof(object), "instance");
+        var cast = Expression.Convert(instance, property.DeclaringType!);
+        var propertyAccess = Expression.Property(cast, property);
+        var box = Expression.Convert(propertyAccess, typeof(object));
+        return Expression.Lambda<Func<object, object?>>(box, instance).Compile();
     }
 
     private static Func<T, TProperty> BuildGetter<T, TProperty>(PropertyInfo property)
@@ -87,6 +141,19 @@ internal static class TypeMetadataCache
         }
     }
 }
+
+internal sealed record RuntimeTypeMetadata(
+    RuntimeColumnDefinition[] Columns,
+    IReadOnlyDictionary<string, Func<object, object?>> ColumnLookup);
+
+internal sealed record RuntimeColumnDefinition(
+    string PropertyName,
+    string ColumnName,
+    int? Order,
+    int DeclarationOrder,
+    Func<object, object?> Getter);
+
+internal sealed record ColumnDetails(string PropertyName, string ColumnName, int? Order, int DeclarationOrder);
 
 internal sealed record TypeMetadata<T>(IColumnWriter<T>[] Columns);
 

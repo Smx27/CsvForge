@@ -14,6 +14,14 @@ internal static class CsvSerializer
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(writer);
 
+        if (DynamicCsvSerializer.CanHandle<T>())
+        {
+            var rowsWritten = DynamicCsvSerializer.Write(data, writer, options);
+            var profileScope = CsvProfilingHooks.Start(0);
+            profileScope.Complete(rowsWritten);
+            return;
+        }
+
         var metadata = TypeMetadataCache.GetOrAdd<T>();
         var newLine = options.NewLine;
         using var context = new CsvSerializationContext(options);
@@ -33,6 +41,14 @@ internal static class CsvSerializer
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(writer);
 
+        if (DynamicCsvSerializer.CanHandle<T>())
+        {
+            var rowsWritten = await DynamicCsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
+            var profileScope = CsvProfilingHooks.Start(0);
+            profileScope.Complete(rowsWritten);
+            return;
+        }
+
         var metadata = TypeMetadataCache.GetOrAdd<T>();
         var newLine = options.NewLine;
         using var context = new CsvSerializationContext(options);
@@ -51,6 +67,14 @@ internal static class CsvSerializer
     {
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(writer);
+
+        if (DynamicCsvSerializer.CanHandle<T>())
+        {
+            var rowsWritten = await DynamicCsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
+            var profileScope = CsvProfilingHooks.Start(0);
+            profileScope.Complete(rowsWritten);
+            return;
+        }
 
         var metadata = TypeMetadataCache.GetOrAdd<T>();
         var newLine = options.NewLine;
