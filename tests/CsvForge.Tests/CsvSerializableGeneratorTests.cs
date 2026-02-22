@@ -30,6 +30,75 @@ public partial record Order([property: CsvForge.Attributes.CsvColumn(\"id\", Ord
         Assert.Equal(expectedText, generatedText);
     }
 
+
+    [Fact]
+    public void GeneratesWriterThatHonorsCsvIgnoreAndColumnOrderingTies()
+    {
+        var input = """
+using CsvForge.Attributes;
+
+namespace Demo;
+
+[CsvSerializable]
+public partial class Inventory
+{
+    [CsvColumn("z", Order = 1)]
+    public int Zeta { get; set; }
+
+    [CsvColumn("a", Order = 1)]
+    public int Alpha { get; set; }
+
+    [CsvColumn("first", Order = 0)]
+    public int First { get; set; }
+
+    [CsvIgnore]
+    public int Hidden { get; set; }
+}
+""";
+
+        var result = RunGenerator(input);
+        var generated = result.GeneratedTrees.Single(tree => tree.FilePath.EndsWith("Inventory_CsvWriter.g.cs", System.StringComparison.Ordinal));
+        var generatedText = generated.GetText().ToString();
+
+        Assert.Contains("first", generatedText);
+        Assert.Contains("a", generatedText);
+        Assert.Contains("z", generatedText);
+        Assert.DoesNotContain("Hidden", generatedText);
+
+        Assert.True(generatedText.IndexOf("first", System.StringComparison.Ordinal) < generatedText.IndexOf("a", System.StringComparison.Ordinal));
+        Assert.True(generatedText.IndexOf("a", System.StringComparison.Ordinal) < generatedText.IndexOf("z", System.StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void GeneratesWriterThatPrefersCsvColumnNameOverJsonPropertyName()
+    {
+        var input = """
+using CsvForge.Attributes;
+using System.Text.Json.Serialization;
+
+namespace Demo;
+
+[CsvSerializable]
+public partial class NamePrecedence
+{
+    [CsvColumn("csv_name")]
+    [JsonPropertyName("json_name")]
+    public int Value { get; set; }
+
+    [JsonPropertyName("json_only")]
+    public int JsonOnly { get; set; }
+}
+""";
+
+        var result = RunGenerator(input);
+        var generated = result.GeneratedTrees.Single(tree => tree.FilePath.EndsWith("NamePrecedence_CsvWriter.g.cs", System.StringComparison.Ordinal));
+        var generatedText = generated.GetText().ToString();
+
+        Assert.Contains("csv_name", generatedText);
+        Assert.Contains("json_only", generatedText);
+        Assert.DoesNotContain("json_name", generatedText);
+    }
+
     [Fact]
     public void ReportsDeterministicDiagnosticForUnsupportedIndexer()
     {
