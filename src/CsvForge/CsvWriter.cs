@@ -72,12 +72,27 @@ public static class CsvWriter
         Utf8CsvWriter.Write(data, bufferWriter, options);
     }
 
+    public static void Write<T>(IAsyncEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bufferWriter);
+        options ??= CsvOptions.Default;
+        Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken).GetAwaiter().GetResult();
+    }
+
     public static void Write<T>(IEnumerable<T> data, PipeWriter writer, CsvOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(writer);
         options ??= CsvOptions.Default;
         Utf8CsvWriter.Write(data, writer, options);
         writer.FlushAsync().GetAwaiter().GetResult();
+    }
+
+    public static void Write<T>(IAsyncEnumerable<T> data, PipeWriter writer, CsvOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        options ??= CsvOptions.Default;
+        Utf8CsvWriter.WriteAsync(data, writer, options, cancellationToken).GetAwaiter().GetResult();
+        writer.FlushAsync(cancellationToken).GetAwaiter().GetResult();
     }
 
     public static Task WriteToFileAsync<T>(IEnumerable<T> data, string filePath, CsvOptions? options = null, CancellationToken cancellationToken = default)
