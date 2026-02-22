@@ -11,7 +11,7 @@ namespace CsvForge.Tests;
 public sealed class CsvSerializableGeneratorTests
 {
     [Fact]
-    public void GeneratesExpectedWriterForAnnotatedType()
+    public void GeneratesExpectedWritersForAnnotatedType()
     {
         var input = """
 using CsvForge.Attributes;
@@ -23,11 +23,15 @@ public partial record Order([property: CsvForge.Attributes.CsvColumn(\"id\", Ord
 """;
 
         var result = RunGenerator(input);
-        var generated = result.GeneratedTrees.Single(tree => tree.FilePath.EndsWith("Order_CsvWriter.g.cs", System.StringComparison.Ordinal));
-        var generatedText = generated.GetText().ToString().Trim();
-        var expectedText = File.ReadAllText(Path.Combine(GetProjectRoot(), "tests", "CsvForge.Tests", "GoldenFiles", "Order_CsvWriter.g.cs")).Trim();
+        var utf16Generated = result.GeneratedTrees.Single(tree => tree.FilePath.EndsWith("Order_CsvUtf16Writer.g.cs", System.StringComparison.Ordinal));
+        var utf16GeneratedText = utf16Generated.GetText().ToString().Trim();
+        var utf16ExpectedText = File.ReadAllText(Path.Combine(GetProjectRoot(), "tests", "CsvForge.Tests", "GoldenFiles", "Order_CsvUtf16Writer.g.cs")).Trim();
+        Assert.Equal(utf16ExpectedText, utf16GeneratedText);
 
-        Assert.Equal(expectedText, generatedText);
+        var utf8Generated = result.GeneratedTrees.Single(tree => tree.FilePath.EndsWith("Order_CsvUtf8Writer.g.cs", System.StringComparison.Ordinal));
+        var utf8GeneratedText = utf8Generated.GetText().ToString().Trim();
+        var utf8ExpectedText = File.ReadAllText(Path.Combine(GetProjectRoot(), "tests", "CsvForge.Tests", "GoldenFiles", "Order_CsvUtf8Writer.g.cs")).Trim();
+        Assert.Equal(utf8ExpectedText, utf8GeneratedText);
     }
 
 
@@ -57,7 +61,7 @@ public partial class Inventory
 """;
 
         var result = RunGenerator(input);
-        var generated = result.GeneratedTrees.Single(tree => tree.FilePath.EndsWith("Inventory_CsvWriter.g.cs", System.StringComparison.Ordinal));
+        var generated = result.GeneratedTrees.Single(tree => tree.FilePath.EndsWith("Inventory_CsvUtf16Writer.g.cs", System.StringComparison.Ordinal));
         var generatedText = generated.GetText().ToString();
 
         Assert.Contains("first", generatedText);
@@ -91,12 +95,33 @@ public partial class NamePrecedence
 """;
 
         var result = RunGenerator(input);
-        var generated = result.GeneratedTrees.Single(tree => tree.FilePath.EndsWith("NamePrecedence_CsvWriter.g.cs", System.StringComparison.Ordinal));
+        var generated = result.GeneratedTrees.Single(tree => tree.FilePath.EndsWith("NamePrecedence_CsvUtf16Writer.g.cs", System.StringComparison.Ordinal));
         var generatedText = generated.GetText().ToString();
 
         Assert.Contains("csv_name", generatedText);
         Assert.Contains("json_only", generatedText);
         Assert.DoesNotContain("json_name", generatedText);
+    }
+
+
+    [Fact]
+    public void EmitsUtf8AndUtf16WriterTypes()
+    {
+        var input = """
+using CsvForge.Attributes;
+
+namespace Demo;
+
+[CsvSerializable]
+public partial class DualWriter
+{
+    public int Id { get; set; }
+}
+""";
+
+        var result = RunGenerator(input);
+        Assert.Contains(result.GeneratedTrees, tree => tree.FilePath.EndsWith("DualWriter_CsvUtf8Writer.g.cs", System.StringComparison.Ordinal));
+        Assert.Contains(result.GeneratedTrees, tree => tree.FilePath.EndsWith("DualWriter_CsvUtf16Writer.g.cs", System.StringComparison.Ordinal));
     }
 
     [Fact]

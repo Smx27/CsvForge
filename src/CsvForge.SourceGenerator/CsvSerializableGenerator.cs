@@ -39,7 +39,7 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
             .Select(static (c, _) => c!);
 
         var compilationAndCandidates = context.CompilationProvider.Combine(candidates.Collect());
-        context.RegisterSourceOutput(compilationAndCandidates, static (spc, source) => Execute(spc, source.Left, source.Right));
+        context.RegisterSourceOutput(compilationAndCandidates, static (spc, source) => Execute(spc, source.Right));
     }
 
     private static INamedTypeSymbol? GetCandidate(GeneratorSyntaxContext context)
@@ -58,12 +58,7 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
         foreach (var attribute in symbol.GetAttributes())
         {
             var attributeClass = attribute.AttributeClass;
-            if (attributeClass is null)
-            {
-                continue;
-            }
-
-            if (attributeClass.ToDisplayString() == "CsvForge.Attributes.CsvSerializableAttribute")
+            if (attributeClass?.ToDisplayString() == "CsvForge.Attributes.CsvSerializableAttribute")
             {
                 return symbol;
             }
@@ -72,7 +67,7 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
         return null;
     }
 
-    private static void Execute(SourceProductionContext context, Compilation compilation, ImmutableArray<INamedTypeSymbol> candidates)
+    private static void Execute(SourceProductionContext context, ImmutableArray<INamedTypeSymbol> candidates)
     {
         var seen = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         foreach (var symbol in candidates)
@@ -81,6 +76,7 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
             {
                 continue;
             }
+
             if (symbol.TypeParameters.Length > 0)
             {
                 context.ReportDiagnostic(Diagnostic.Create(GenericTypeUnsupported, symbol.Locations.FirstOrDefault(), symbol.ToDisplayString()));
@@ -88,7 +84,7 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
             }
 
             var columns = CollectColumns(context, symbol);
-            EmitWriter(context, symbol, columns);
+            EmitWriters(context, symbol, columns);
         }
     }
 
@@ -124,7 +120,6 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
             var order = GetOrder(property);
             var name = GetName(property);
             var isNullable = property.NullableAnnotation == NullableAnnotation.Annotated || property.Type.IsReferenceType;
-
             result.Add(new ColumnModel(property.Name, name, order, property.Type, isNullable, property.Locations.FirstOrDefault()?.SourceSpan.Start ?? int.MaxValue));
         }
 
@@ -189,17 +184,25 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
         return false;
     }
 
-    private static void EmitWriter(SourceProductionContext context, INamedTypeSymbol symbol, List<ColumnModel> columns)
+    private static void EmitWriters(SourceProductionContext context, INamedTypeSymbol symbol, List<ColumnModel> columns)
     {
         var ns = symbol.ContainingNamespace.IsGlobalNamespace ? null : symbol.ContainingNamespace.ToDisplayString();
         var targetType = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        var writerTypeName = GetWriterTypeName(symbol);
+        var writerBaseName = GetWriterBaseName(symbol);
+
+        context.AddSource($"{writerBaseName}_CsvUtf16Writer.g.cs", SourceText.From(BuildUtf16Writer(ns, targetType, writerBaseName, columns), Encoding.UTF8));
+        context.AddSource($"{writerBaseName}_CsvUtf8Writer.g.cs", SourceText.From(BuildUtf8Writer(ns, targetType, writerBaseName, columns), Encoding.UTF8));
+    }
+
+    private static string BuildUtf16Writer(string? ns, string targetType, string writerBaseName, List<ColumnModel> columns)
+    {
+        var writerTypeName = writerBaseName + "_CsvUtf16Writer";
         var source = new StringBuilder();
         source.AppendLine("using System;");
+        source.AppendLine("using System.Globalization;");
         source.AppendLine("using System.IO;");
         source.AppendLine("using System.Threading;");
         source.AppendLine("using System.Threading.Tasks;");
-        source.AppendLine("using System.Runtime.CompilerServices;");
 
         if (ns is not null)
         {
@@ -210,109 +213,242 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
         source.Append("file sealed class ").Append(writerTypeName).Append(" : global::CsvForge.ICsvTypeWriter<").Append(targetType).AppendLine(">")
             .AppendLine("{")
             .Append("    public static readonly ").Append(writerTypeName).AppendLine(" Instance = new();")
+            .AppendLine("    private static readonly string[] HeaderColumns = new[]")
+            .AppendLine("    {");
+
+        foreach (var column in columns)
+        {
+            source.Append("        \"").Append(Escape(column.ColumnName)).AppendLine("\",");
+        }
+
+        source.AppendLine("    };")
             .AppendLine()
             .AppendLine("    public void WriteHeader(TextWriter writer, global::CsvForge.CsvOptions options)")
-            .AppendLine("    {");
-
-        for (var i = 0; i < columns.Count; i++)
-        {
-            if (i > 0)
-            {
-                source.AppendLine("        writer.Write(options.Delimiter);");
-            }
-
-            source.Append("        global::CsvForge.CsvGeneratedWriterSupport.WriteEscaped(writer, \"").Append(Escape(columns[i].ColumnName)).AppendLine("\", options.Delimiter);");
-        }
-
-        source.AppendLine("    }")
+            .AppendLine("    {")
+            .AppendLine("        for (var i = 0; i < HeaderColumns.Length; i++)")
+            .AppendLine("        {")
+            .AppendLine("            if (i > 0)")
+            .AppendLine("            {")
+            .AppendLine("                writer.Write(options.Delimiter);")
+            .AppendLine("            }")
+            .AppendLine("            global::CsvForge.CsvGeneratedWriterSupport.WriteEscaped(writer, HeaderColumns[i], options.Delimiter);")
+            .AppendLine("        }")
+            .AppendLine("    }")
             .AppendLine()
-            .AppendLine("    public void WriteRow(TextWriter writer, " + targetType + " value, global::CsvForge.CsvOptions options)")
+            .Append("    public void WriteRow(TextWriter writer, ").Append(targetType).AppendLine(" value, global::CsvForge.CsvOptions options)")
             .AppendLine("    {");
 
-        for (var i = 0; i < columns.Count; i++)
-        {
-            if (i > 0)
-            {
-                source.AppendLine("        writer.Write(options.Delimiter);");
-            }
-
-            AppendValueWrite(source, columns[i], isAsync: false);
-        }
+        AppendRowWrites(source, columns, utf8: false, isAsync: false);
 
         source.AppendLine("    }")
             .AppendLine()
             .AppendLine("    public async ValueTask WriteHeaderAsync(TextWriter writer, global::CsvForge.CsvOptions options, CancellationToken cancellationToken)")
-            .AppendLine("    {");
-
-        for (var i = 0; i < columns.Count; i++)
-        {
-            if (i > 0)
-            {
-                source.AppendLine("        await writer.WriteAsync(options.Delimiter).ConfigureAwait(false);");
-            }
-
-            source.Append("        await global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedAsync(writer, \"").Append(Escape(columns[i].ColumnName)).AppendLine("\", options.Delimiter, cancellationToken).ConfigureAwait(false);");
-        }
-
-        source.AppendLine("    }")
+            .AppendLine("    {")
+            .AppendLine("        for (var i = 0; i < HeaderColumns.Length; i++)")
+            .AppendLine("        {")
+            .AppendLine("            if (i > 0)")
+            .AppendLine("            {")
+            .AppendLine("                await writer.WriteAsync(options.Delimiter).ConfigureAwait(false);")
+            .AppendLine("            }")
+            .AppendLine("            await global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedAsync(writer, HeaderColumns[i], options.Delimiter, cancellationToken).ConfigureAwait(false);")
+            .AppendLine("        }")
+            .AppendLine("    }")
             .AppendLine()
-            .AppendLine("    public async ValueTask WriteRowAsync(TextWriter writer, " + targetType + " value, global::CsvForge.CsvOptions options, CancellationToken cancellationToken)")
+            .Append("    public async ValueTask WriteRowAsync(TextWriter writer, ").Append(targetType).AppendLine(" value, global::CsvForge.CsvOptions options, CancellationToken cancellationToken)")
             .AppendLine("    {");
 
-        for (var i = 0; i < columns.Count; i++)
-        {
-            if (i > 0)
-            {
-                source.AppendLine("        cancellationToken.ThrowIfCancellationRequested();");
-                source.AppendLine("        await writer.WriteAsync(options.Delimiter).ConfigureAwait(false);");
-            }
-
-            AppendValueWrite(source, columns[i], isAsync: true);
-        }
+        AppendRowWrites(source, columns, utf8: false, isAsync: true);
 
         source.AppendLine("    }")
             .AppendLine("}");
-
-
-
-        var hintName = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", string.Empty).Replace(".", "_").Replace("+", "_") + "_CsvWriter.g.cs";
-        context.AddSource(hintName, SourceText.From(source.ToString(), Encoding.UTF8));
+        return source.ToString();
     }
 
-    private static void AppendValueWrite(StringBuilder source, ColumnModel column, bool isAsync)
+    private static string BuildUtf8Writer(string? ns, string targetType, string writerBaseName, List<ColumnModel> columns)
+    {
+        var writerTypeName = writerBaseName + "_CsvUtf8Writer";
+        var source = new StringBuilder();
+        source.AppendLine("using System;");
+        source.AppendLine("using System.Buffers;");
+        source.AppendLine("using System.Globalization;");
+        source.AppendLine("using System.Text;");
+        source.AppendLine("using System.Threading;");
+        source.AppendLine("using System.Threading.Tasks;");
+
+        if (ns is not null)
+        {
+            source.Append("namespace ").Append(ns).AppendLine(";");
+            source.AppendLine();
+        }
+
+        source.Append("file sealed class ").Append(writerTypeName).Append(" : global::CsvForge.ICsvUtf8TypeWriter<").Append(targetType).AppendLine(">")
+            .AppendLine("{")
+            .Append("    public static readonly ").Append(writerTypeName).AppendLine(" Instance = new();")
+            .AppendLine("    private static readonly byte[][] HeaderColumnsUtf8 = new[]")
+            .AppendLine("    {");
+
+        foreach (var column in columns)
+        {
+            source.Append("        Encoding.UTF8.GetBytes(\"").Append(Escape(column.ColumnName)).AppendLine("\"),");
+        }
+
+        source.AppendLine("    };")
+            .AppendLine()
+            .AppendLine("    public void WriteHeader(IBufferWriter<byte> writer, global::CsvForge.CsvOptions options)")
+            .AppendLine("    {")
+            .AppendLine("        for (var i = 0; i < HeaderColumnsUtf8.Length; i++)")
+            .AppendLine("        {")
+            .AppendLine("            if (i > 0)")
+            .AppendLine("            {")
+            .AppendLine("                var delimiter = writer.GetSpan(1);")
+            .AppendLine("                delimiter[0] = (byte)options.Delimiter;")
+            .AppendLine("                writer.Advance(1);")
+            .AppendLine("            }")
+            .AppendLine("            global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedUtf8(writer, HeaderColumnsUtf8[i], (byte)options.Delimiter);")
+            .AppendLine("        }")
+            .AppendLine("    }")
+            .AppendLine()
+            .Append("    public void WriteRow(IBufferWriter<byte> writer, ").Append(targetType).AppendLine(" value, global::CsvForge.CsvOptions options)")
+            .AppendLine("    {");
+
+        AppendRowWrites(source, columns, utf8: true, isAsync: false);
+
+        source.AppendLine("    }")
+            .AppendLine()
+            .AppendLine("    public ValueTask WriteHeaderAsync(IBufferWriter<byte> writer, global::CsvForge.CsvOptions options, CancellationToken cancellationToken)")
+            .AppendLine("    {")
+            .AppendLine("        WriteHeader(writer, options);")
+            .AppendLine("        return ValueTask.CompletedTask;")
+            .AppendLine("    }")
+            .AppendLine()
+            .Append("    public ValueTask WriteRowAsync(IBufferWriter<byte> writer, ").Append(targetType).AppendLine(" value, global::CsvForge.CsvOptions options, CancellationToken cancellationToken)")
+            .AppendLine("    {")
+            .AppendLine("        WriteRow(writer, value, options);")
+            .AppendLine("        return ValueTask.CompletedTask;")
+            .AppendLine("    }")
+            .AppendLine("}");
+
+        return source.ToString();
+    }
+
+    private static void AppendRowWrites(StringBuilder source, List<ColumnModel> columns, bool utf8, bool isAsync)
+    {
+        for (var i = 0; i < columns.Count; i++)
+        {
+            if (i > 0)
+            {
+                if (isAsync)
+                {
+                    source.AppendLine("        cancellationToken.ThrowIfCancellationRequested();");
+                }
+
+                if (utf8)
+                {
+                    source.AppendLine("        var delimiter = writer.GetSpan(1);");
+                    source.AppendLine("        delimiter[0] = (byte)options.Delimiter;");
+                    source.AppendLine("        writer.Advance(1);");
+                }
+                else if (isAsync)
+                {
+                    source.AppendLine("        await writer.WriteAsync(options.Delimiter).ConfigureAwait(false);");
+                }
+                else
+                {
+                    source.AppendLine("        writer.Write(options.Delimiter);");
+                }
+            }
+
+            AppendValueWrite(source, columns[i], utf8, isAsync);
+        }
+    }
+
+    private static void AppendValueWrite(StringBuilder source, ColumnModel column, bool utf8, bool isAsync)
     {
         var accessor = "value." + column.PropertyName;
-        var textExpr = column.Type.SpecialType == SpecialType.System_String
-            ? accessor
-            : $"{accessor}.ToString()";
-
         if (column.IsNullable)
         {
-            source.Append("        var ").Append(column.PropertyName).Append("Value = ").Append(accessor).AppendLine(";");
-            source.Append("        ");
-            if (isAsync)
+            if (utf8)
             {
-                source.Append("await global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedAsync(writer, ").Append(column.PropertyName).Append("Value?.ToString(), options.Delimiter, cancellationToken).ConfigureAwait(false);");
+                source.Append("        global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedUtf8(writer, ").Append(accessor).AppendLine("?.ToString(), (byte)options.Delimiter);");
+            }
+            else if (isAsync)
+            {
+                source.Append("        await global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedAsync(writer, ").Append(accessor).AppendLine("?.ToString(), options.Delimiter, cancellationToken).ConfigureAwait(false);");
             }
             else
             {
-                source.Append("global::CsvForge.CsvGeneratedWriterSupport.WriteEscaped(writer, ").Append(column.PropertyName).Append("Value?.ToString(), options.Delimiter);");
+                source.Append("        global::CsvForge.CsvGeneratedWriterSupport.WriteEscaped(writer, ").Append(accessor).AppendLine("?.ToString(), options.Delimiter);");
             }
 
-            source.AppendLine();
             return;
         }
 
-        if (isAsync)
+        var specialType = column.Type.SpecialType;
+        if (specialType == SpecialType.System_Int32 || specialType == SpecialType.System_Int64 || specialType == SpecialType.System_Double || column.Type.ToDisplayString() == "System.DateTime")
         {
-            source.Append("        await global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedAsync(writer, ").Append(textExpr).AppendLine(", options.Delimiter, cancellationToken).ConfigureAwait(false);");
+            source.AppendLine("        Span<char> formatted = stackalloc char[64];");
+            if (specialType == SpecialType.System_Int32 || specialType == SpecialType.System_Int64)
+            {
+                source.Append("        ").Append(accessor).AppendLine(".TryFormat(formatted, out var charsWritten, default, CultureInfo.InvariantCulture);");
+            }
+            else if (specialType == SpecialType.System_Double)
+            {
+                source.Append("        ").Append(accessor).AppendLine(".TryFormat(formatted, out var charsWritten, \"G\", CultureInfo.InvariantCulture);");
+            }
+            else
+            {
+                source.Append("        ").Append(accessor).AppendLine(".TryFormat(formatted, out var charsWritten, \"O\", CultureInfo.InvariantCulture);");
+            }
+
+            if (utf8)
+            {
+                source.AppendLine("        global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedUtf8(writer, formatted.Slice(0, charsWritten), (byte)options.Delimiter);");
+            }
+            else if (isAsync)
+            {
+                source.AppendLine("        await global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedAsync(writer, formatted.Slice(0, charsWritten).ToString(), options.Delimiter, cancellationToken).ConfigureAwait(false);");
+            }
+            else
+            {
+                source.AppendLine("        global::CsvForge.CsvGeneratedWriterSupport.WriteEscaped(writer, formatted.Slice(0, charsWritten), options.Delimiter);");
+            }
+
             return;
         }
 
-        source.Append("        global::CsvForge.CsvGeneratedWriterSupport.WriteEscaped(writer, ").Append(textExpr).AppendLine(", options.Delimiter);");
+        if (column.Type.SpecialType == SpecialType.System_String)
+        {
+            if (utf8)
+            {
+                source.Append("        global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedUtf8(writer, ").Append(accessor).AppendLine(", (byte)options.Delimiter);");
+            }
+            else if (isAsync)
+            {
+                source.Append("        await global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedAsync(writer, ").Append(accessor).AppendLine(", options.Delimiter, cancellationToken).ConfigureAwait(false);");
+            }
+            else
+            {
+                source.Append("        global::CsvForge.CsvGeneratedWriterSupport.WriteEscaped(writer, ").Append(accessor).AppendLine(", options.Delimiter);");
+            }
+
+            return;
+        }
+
+        if (utf8)
+        {
+            source.Append("        global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedUtf8(writer, ").Append(accessor).AppendLine(".ToString(), (byte)options.Delimiter);");
+        }
+        else if (isAsync)
+        {
+            source.Append("        await global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedAsync(writer, ").Append(accessor).AppendLine(".ToString(), options.Delimiter, cancellationToken).ConfigureAwait(false);");
+        }
+        else
+        {
+            source.Append("        global::CsvForge.CsvGeneratedWriterSupport.WriteEscaped(writer, ").Append(accessor).AppendLine(".ToString(), options.Delimiter);");
+        }
     }
 
-    private static string GetWriterTypeName(INamedTypeSymbol symbol)
+    private static string GetWriterBaseName(INamedTypeSymbol symbol)
     {
         var stack = new Stack<string>();
         ISymbol? current = symbol;
@@ -322,7 +458,7 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
             current = named.ContainingType;
         }
 
-        return string.Join("_", stack) + "_CsvWriter";
+        return string.Join("_", stack);
     }
 
     private static string Escape(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
@@ -331,5 +467,4 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
     {
         public ColumnOrderKey SortKey => new(Order, DeclarationOrder, PropertyName);
     }
-
 }

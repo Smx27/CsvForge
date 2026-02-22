@@ -12,6 +12,13 @@ internal static class Utf8CsvWriter
 {
     public static void Write<T>(IEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions options)
     {
+        var generatedWriter = CsvUtf8TypeWriterCache<T>.Resolve();
+        if (generatedWriter is not null)
+        {
+            CsvSerializer.Write(data, bufferWriter, options, generatedWriter);
+            return;
+        }
+
         using var writer = new Utf8BufferTextWriter(bufferWriter, options.Encoding);
         CsvSerializer.Write(data, writer, options);
         writer.Flush();
@@ -19,6 +26,14 @@ internal static class Utf8CsvWriter
 
     public static async Task WriteAsync<T>(IEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions options, CancellationToken cancellationToken)
     {
+        var generatedWriter = CsvUtf8TypeWriterCache<T>.Resolve();
+        if (generatedWriter is not null)
+        {
+            await CsvSerializer.WriteAsync(data, bufferWriter, options, generatedWriter, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+
         await using var writer = new Utf8BufferTextWriter(bufferWriter, options.Encoding);
         await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
         await writer.FlushAsync().ConfigureAwait(false);
@@ -26,6 +41,13 @@ internal static class Utf8CsvWriter
 
     public static async Task WriteAsync<T>(IAsyncEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions options, CancellationToken cancellationToken)
     {
+        var generatedWriter = CsvUtf8TypeWriterCache<T>.Resolve();
+        if (generatedWriter is not null)
+        {
+            await CsvSerializer.WriteAsync(data, bufferWriter, options, generatedWriter, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         await using var writer = new Utf8BufferTextWriter(bufferWriter, options.Encoding);
         await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
         await writer.FlushAsync().ConfigureAwait(false);
