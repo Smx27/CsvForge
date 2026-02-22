@@ -297,6 +297,7 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
         var source = new StringBuilder();
         source.AppendLine("using System;");
         source.AppendLine("using System.Buffers;");
+        source.AppendLine("using System.Buffers.Text;");
         source.AppendLine("using System.Globalization;");
         source.AppendLine("using System.Text;");
         source.AppendLine("using System.Threading;");
@@ -371,9 +372,11 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
 
                 if (utf8)
                 {
-                    source.AppendLine("        var delimiter = writer.GetSpan(1);");
-                    source.AppendLine("        delimiter[0] = (byte)options.Delimiter;");
-                    source.AppendLine("        writer.Advance(1);");
+                    source.AppendLine("        {");
+                    source.AppendLine("            var delimiter = writer.GetSpan(1);");
+                    source.AppendLine("            delimiter[0] = (byte)options.Delimiter;");
+                    source.AppendLine("            writer.Advance(1);");
+                    source.AppendLine("        }");
                 }
                 else if (isAsync)
                 {
@@ -392,6 +395,22 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
     private static void AppendValueWrite(StringBuilder source, ColumnModel column, bool utf8, bool isAsync)
     {
         var accessor = "value." + column.PropertyName;
+        if (utf8 && TryGetUtf8FormatterType(column.Type, out var format))
+        {
+            AppendUtf8FormatterWrite(source, accessor, format);
+            return;
+        }
+
+        if (utf8 && TryGetUtf8FormatterNullableType(column.Type, out var nullableFormat))
+        {
+            source.Append("        var ").Append(column.PropertyName).AppendLine("Value = " + accessor + ";");
+            source.Append("        if (").Append(column.PropertyName).AppendLine("Value.HasValue)");
+            source.AppendLine("        {");
+            AppendUtf8FormatterWrite(source, column.PropertyName + "Value.GetValueOrDefault()", nullableFormat, "            ");
+            source.AppendLine("        }");
+            return;
+        }
+
         if (column.IsNullable)
         {
             if (utf8)
@@ -489,6 +508,80 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
     }
 
     private static string Escape(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+    private static void AppendUtf8FormatterWrite(StringBuilder source, string accessor, Utf8FormatInfo formatInfo, string indent = "        ")
+    {
+        source.Append(indent).AppendLine("{");
+        source.Append(indent).Append("    Span<byte> utf8Formatted = stackalloc byte[").Append(formatInfo.BufferSize).AppendLine("];");
+        source.Append(indent).Append("    if (!Utf8Formatter.TryFormat(").Append(accessor).Append(", utf8Formatted, out var bytesWritten");
+        if (formatInfo.FormatLiteral is not null)
+        {
+            source.Append(", '").Append(formatInfo.FormatLiteral).Append("'");
+        }
+
+        source.AppendLine("))");
+        source.Append(indent).AppendLine("    {");
+        source.Append(indent).AppendLine("        throw new InvalidOperationException(\"Could not format value as UTF-8.\");");
+        source.Append(indent).AppendLine("    }");
+        source.Append(indent).AppendLine("    global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedUtf8(writer, utf8Formatted.Slice(0, bytesWritten), (byte)options.Delimiter);");
+        source.Append(indent).AppendLine("}");
+    }
+
+    private static bool TryGetUtf8FormatterNullableType(ITypeSymbol type, out Utf8FormatInfo formatInfo)
+    {
+        if (type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+        {
+            return TryGetUtf8FormatterType(named.TypeArguments[0], out formatInfo);
+        }
+
+        formatInfo = default;
+        return false;
+    }
+
+    private static bool TryGetUtf8FormatterType(ITypeSymbol type, out Utf8FormatInfo formatInfo)
+    {
+        switch (type.SpecialType)
+        {
+            case SpecialType.System_Boolean:
+                formatInfo = new Utf8FormatInfo(null, 8);
+                return true;
+            case SpecialType.System_Byte:
+            case SpecialType.System_SByte:
+            case SpecialType.System_Int16:
+            case SpecialType.System_UInt16:
+            case SpecialType.System_Int32:
+            case SpecialType.System_UInt32:
+            case SpecialType.System_Int64:
+            case SpecialType.System_UInt64:
+                formatInfo = new Utf8FormatInfo('D', 32);
+                return true;
+            case SpecialType.System_Single:
+            case SpecialType.System_Double:
+                formatInfo = new Utf8FormatInfo('G', 64);
+                return true;
+            case SpecialType.System_Decimal:
+                formatInfo = new Utf8FormatInfo('G', 64);
+                return true;
+        }
+
+        var typeName = type.ToDisplayString();
+        if (typeName == "System.DateTime" || typeName == "System.DateTimeOffset")
+        {
+            formatInfo = new Utf8FormatInfo('O', 128);
+            return true;
+        }
+
+        if (typeName == "System.Guid")
+        {
+            formatInfo = new Utf8FormatInfo('D', 36);
+            return true;
+        }
+
+        formatInfo = default;
+        return false;
+    }
+
+    private readonly record struct Utf8FormatInfo(char? FormatLiteral, int BufferSize);
 
     private sealed record ColumnModel(string PropertyName, string ColumnName, int? Order, ITypeSymbol Type, bool IsNullable, int DeclarationOrder)
     {

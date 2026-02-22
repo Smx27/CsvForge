@@ -1,5 +1,6 @@
 using System;
 using System.Buffers;
+using System.Buffers.Text;
 using System.Globalization;
 using System.Text;
 using System.Threading;
@@ -32,12 +33,19 @@ file sealed class Order_CsvUtf8Writer : global::CsvForge.ICsvUtf8TypeWriter<glob
 
     public void WriteRow(IBufferWriter<byte> writer, global::Demo.Order value, global::CsvForge.CsvOptions options)
     {
-        Span<char> formatted = stackalloc char[64];
-        value.Id.TryFormat(formatted, out var charsWritten, default, CultureInfo.InvariantCulture);
-        global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedUtf8(writer, formatted.Slice(0, charsWritten), (byte)options.Delimiter);
-        var delimiter = writer.GetSpan(1);
-        delimiter[0] = (byte)options.Delimiter;
-        writer.Advance(1);
+        {
+            Span<byte> utf8Formatted = stackalloc byte[32];
+            if (!Utf8Formatter.TryFormat(value.Id, utf8Formatted, out var bytesWritten, 'D'))
+            {
+                throw new InvalidOperationException("Could not format value as UTF-8.");
+            }
+            global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedUtf8(writer, utf8Formatted.Slice(0, bytesWritten), (byte)options.Delimiter);
+        }
+        {
+            var delimiter = writer.GetSpan(1);
+            delimiter[0] = (byte)options.Delimiter;
+            writer.Advance(1);
+        }
         global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedUtf8(writer, value.CustomerName?.ToString(), (byte)options.Delimiter);
     }
 
