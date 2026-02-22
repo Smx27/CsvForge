@@ -1,34 +1,30 @@
 using System;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq.Expressions;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using CsvForge.Metadata;
 
 namespace CsvForge;
 
 internal static class CsvSerializer
 {
-    private static readonly ConcurrentDictionary<Type, object> AccessorCache = new();
-
     public static void Write<T>(IEnumerable<T> data, TextWriter writer, CsvOptions options)
     {
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(writer);
 
-        var accessors = GetAccessors<T>();
+        var metadata = TypeMetadataCache.GetOrAdd(typeof(T));
 
         if (options.IncludeHeader)
         {
-            WriteHeader(writer, accessors, options);
+            WriteHeader(writer, metadata, options);
         }
 
         foreach (var item in data)
         {
-            WriteRecord(writer, item, accessors, options);
+            WriteRecord(writer, item, metadata, options);
         }
     }
 
@@ -37,17 +33,17 @@ internal static class CsvSerializer
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(writer);
 
-        var accessors = GetAccessors<T>();
+        var metadata = TypeMetadataCache.GetOrAdd(typeof(T));
 
         if (options.IncludeHeader)
         {
-            await WriteHeaderAsync(writer, accessors, options, cancellationToken).ConfigureAwait(false);
+            await WriteHeaderAsync(writer, metadata, options, cancellationToken).ConfigureAwait(false);
         }
 
         foreach (var item in data)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await WriteRecordAsync(writer, item, accessors, options, cancellationToken).ConfigureAwait(false);
+            await WriteRecordAsync(writer, item, metadata, options, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -56,64 +52,37 @@ internal static class CsvSerializer
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(writer);
 
-        var accessors = GetAccessors<T>();
+        var metadata = TypeMetadataCache.GetOrAdd(typeof(T));
 
         if (options.IncludeHeader)
         {
-            await WriteHeaderAsync(writer, accessors, options, cancellationToken).ConfigureAwait(false);
+            await WriteHeaderAsync(writer, metadata, options, cancellationToken).ConfigureAwait(false);
         }
 
         await foreach (var item in data.WithCancellation(cancellationToken).ConfigureAwait(false))
         {
-            await WriteRecordAsync(writer, item, accessors, options, cancellationToken).ConfigureAwait(false);
+            await WriteRecordAsync(writer, item, metadata, options, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private static Accessor<T>[] GetAccessors<T>()
+    private static void WriteHeader(TextWriter writer, TypeMetadata metadata, CsvOptions options)
     {
-        return (Accessor<T>[])AccessorCache.GetOrAdd(typeof(T), static _ => CreateAccessors<T>());
-    }
-
-    private static Accessor<T>[] CreateAccessors<T>()
-    {
-        var properties = typeof(T).GetProperties(BindingFlags.Instance | BindingFlags.Public);
-        var accessors = new Accessor<T>[properties.Length];
-
-        for (var i = 0; i < properties.Length; i++)
-        {
-            var property = properties[i];
-            var parameter = Expression.Parameter(typeof(T), "instance");
-            Expression body = Expression.Property(parameter, property);
-            if (property.PropertyType.IsValueType)
-            {
-                body = Expression.Convert(body, typeof(object));
-            }
-
-            var getter = Expression.Lambda<Func<T, object?>>(body, parameter).Compile();
-            accessors[i] = new Accessor<T>(property.Name, getter);
-        }
-
-        return accessors;
-    }
-
-    private static void WriteHeader<T>(TextWriter writer, Accessor<T>[] accessors, CsvOptions options)
-    {
-        for (var i = 0; i < accessors.Length; i++)
+        for (var i = 0; i < metadata.Columns.Length; i++)
         {
             if (i > 0)
             {
                 writer.Write(options.Delimiter);
             }
 
-            WriteField(writer, accessors[i].Name, options);
+            WriteField(writer, metadata.Columns[i].ColumnName, options);
         }
 
         writer.Write(options.NewLine);
     }
 
-    private static async Task WriteHeaderAsync<T>(TextWriter writer, Accessor<T>[] accessors, CsvOptions options, CancellationToken cancellationToken)
+    private static async Task WriteHeaderAsync(TextWriter writer, TypeMetadata metadata, CsvOptions options, CancellationToken cancellationToken)
     {
-        for (var i = 0; i < accessors.Length; i++)
+        for (var i = 0; i < metadata.Columns.Length; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -122,31 +91,32 @@ internal static class CsvSerializer
                 await writer.WriteAsync(options.Delimiter).ConfigureAwait(false);
             }
 
-            await WriteFieldAsync(writer, accessors[i].Name, options, cancellationToken).ConfigureAwait(false);
+            await WriteFieldAsync(writer, metadata.Columns[i].ColumnName, options, cancellationToken).ConfigureAwait(false);
         }
 
         await writer.WriteAsync(options.NewLine).ConfigureAwait(false);
     }
 
-    private static void WriteRecord<T>(TextWriter writer, T item, Accessor<T>[] accessors, CsvOptions options)
+    private static void WriteRecord<T>(TextWriter writer, T item, TypeMetadata metadata, CsvOptions options)
     {
-        for (var i = 0; i < accessors.Length; i++)
+        for (var i = 0; i < metadata.Columns.Length; i++)
         {
             if (i > 0)
             {
                 writer.Write(options.Delimiter);
             }
 
-            var value = accessors[i].Getter(item);
-            WriteField(writer, FormatValue(value, options.FormatProvider), options);
+            var column = metadata.Columns[i];
+            var value = column.Getter(item!);
+            WriteField(writer, column.Formatter(value, options.FormatProvider), options);
         }
 
         writer.Write(options.NewLine);
     }
 
-    private static async Task WriteRecordAsync<T>(TextWriter writer, T item, Accessor<T>[] accessors, CsvOptions options, CancellationToken cancellationToken)
+    private static async Task WriteRecordAsync<T>(TextWriter writer, T item, TypeMetadata metadata, CsvOptions options, CancellationToken cancellationToken)
     {
-        for (var i = 0; i < accessors.Length; i++)
+        for (var i = 0; i < metadata.Columns.Length; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -155,26 +125,12 @@ internal static class CsvSerializer
                 await writer.WriteAsync(options.Delimiter).ConfigureAwait(false);
             }
 
-            var value = accessors[i].Getter(item);
-            await WriteFieldAsync(writer, FormatValue(value, options.FormatProvider), options, cancellationToken).ConfigureAwait(false);
+            var column = metadata.Columns[i];
+            var value = column.Getter(item!);
+            await WriteFieldAsync(writer, column.Formatter(value, options.FormatProvider), options, cancellationToken).ConfigureAwait(false);
         }
 
         await writer.WriteAsync(options.NewLine).ConfigureAwait(false);
-    }
-
-    private static string? FormatValue(object? value, IFormatProvider formatProvider)
-    {
-        if (value is null)
-        {
-            return null;
-        }
-
-        if (value is IFormattable formattable)
-        {
-            return formattable.ToString(null, formatProvider);
-        }
-
-        return Convert.ToString(value, formatProvider);
     }
 
     private static void WriteField(TextWriter writer, string? value, CsvOptions options)
@@ -253,6 +209,4 @@ internal static class CsvSerializer
 
         return !string.IsNullOrEmpty(newLine) && value.Contains(newLine, StringComparison.Ordinal);
     }
-
-    private readonly record struct Accessor<T>(string Name, Func<T, object?> Getter);
 }
