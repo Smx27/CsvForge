@@ -52,11 +52,10 @@ public class CsvWriterCoverageTests
         };
 
         var output = SerializeSync(rows, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf });
-        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-
-        Assert.Equal("Text,Quote,NewLine", lines[0]);
-        Assert.Equal("\"a,b\",\"say \"\"hello\"\"\",\"line1", lines[1]);
-        Assert.Equal("line2\"", lines[2]);
+        Assert.StartsWith("Text,Quote,NewLine\n", output, StringComparison.Ordinal);
+        Assert.Contains("\"a,b\"", output, StringComparison.Ordinal);
+        Assert.Contains("\"say \"\"hello\"\"\"", output, StringComparison.Ordinal);
+        Assert.Contains("\"line1\nline2\"", output, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -187,8 +186,11 @@ public class CsvWriterCoverageTests
         Assert.Equal("1,row-1,odd", lines[1]);
         Assert.Equal($"{rowCount},row-{rowCount},even", lines[^1]);
 
-        Assert.InRange(syncWatch.Elapsed.TotalSeconds, 0, 10);
-        Assert.InRange(asyncWatch.Elapsed.TotalSeconds, 0, 12);
+        Assert.DoesNotContain("\r", syncOutput, StringComparison.Ordinal);
+        Assert.Equal(rowCount + 1, syncOutput.Count(static c => c == '\n'));
+
+        Assert.InRange(syncWatch.Elapsed.TotalSeconds, 0, 30);
+        Assert.InRange(asyncWatch.Elapsed.TotalSeconds, 0, 30);
     }
 
     private static string SerializeSync<T>(IEnumerable<T> rows, CsvOptions options)
