@@ -11,6 +11,7 @@ internal static class Utf16CsvWriter
 {
     public static void Write<T>(IEnumerable<T> data, TextWriter textWriter, CsvOptions options)
     {
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         using var writer = new Utf16BufferTextWriter(textWriter);
         CsvSerializer.Write(data, writer, options);
         writer.Flush();
@@ -18,6 +19,7 @@ internal static class Utf16CsvWriter
 
     public static async Task WriteAsync<T>(IEnumerable<T> data, TextWriter textWriter, CsvOptions options, CancellationToken cancellationToken)
     {
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         await using var writer = new Utf16BufferTextWriter(textWriter);
         await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
         await writer.FlushAsync().ConfigureAwait(false);
@@ -25,6 +27,7 @@ internal static class Utf16CsvWriter
 
     public static async Task WriteAsync<T>(IAsyncEnumerable<T> data, TextWriter textWriter, CsvOptions options, CancellationToken cancellationToken)
     {
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         await using var writer = new Utf16BufferTextWriter(textWriter);
         await CsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
         await writer.FlushAsync().ConfigureAwait(false);

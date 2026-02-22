@@ -11,7 +11,7 @@ public static class CsvGeneratedWriterSupport
 {
     private static readonly byte QuoteByte = (byte)'"';
 
-    public static void WriteEscaped(TextWriter writer, string? value, char delimiter)
+    public static void WriteEscaped(TextWriter writer, string? value, char delimiter, bool excelCompatibility = false)
     {
         ArgumentNullException.ThrowIfNull(writer);
 
@@ -34,6 +34,15 @@ public static class CsvGeneratedWriterSupport
             {
                 writer.Write("\"\"");
             }
+            else if (excelCompatibility && (current == '\r' || current == '\n'))
+            {
+                if (current == '\r' && i + 1 < value.Length && value[i + 1] == '\n')
+                {
+                    i++;
+                }
+
+                writer.Write("\r\n");
+            }
             else
             {
                 writer.Write(current);
@@ -43,7 +52,7 @@ public static class CsvGeneratedWriterSupport
         writer.Write('"');
     }
 
-    public static void WriteEscaped(TextWriter writer, ReadOnlySpan<char> value, char delimiter)
+    public static void WriteEscaped(TextWriter writer, ReadOnlySpan<char> value, char delimiter, bool excelCompatibility = false)
     {
         ArgumentNullException.ThrowIfNull(writer);
 
@@ -66,6 +75,15 @@ public static class CsvGeneratedWriterSupport
             {
                 writer.Write("\"\"");
             }
+            else if (excelCompatibility && (current == '\r' || current == '\n'))
+            {
+                if (current == '\r' && i + 1 < value.Length && value[i + 1] == '\n')
+                {
+                    i++;
+                }
+
+                writer.Write("\r\n");
+            }
             else
             {
                 writer.Write(current);
@@ -75,7 +93,7 @@ public static class CsvGeneratedWriterSupport
         writer.Write('"');
     }
 
-    public static async ValueTask WriteEscapedAsync(TextWriter writer, string? value, char delimiter, CancellationToken cancellationToken)
+    public static async ValueTask WriteEscapedAsync(TextWriter writer, string? value, char delimiter, CancellationToken cancellationToken, bool excelCompatibility = false)
     {
         ArgumentNullException.ThrowIfNull(writer);
 
@@ -98,6 +116,15 @@ public static class CsvGeneratedWriterSupport
             if (current == '"')
             {
                 await writer.WriteAsync("\"\"").ConfigureAwait(false);
+            }
+            else if (excelCompatibility && (current == '\r' || current == '\n'))
+            {
+                if (current == '\r' && i + 1 < value.Length && value[i + 1] == '\n')
+                {
+                    i++;
+                }
+
+                await writer.WriteAsync("\r\n").ConfigureAwait(false);
             }
             else
             {
@@ -127,24 +154,25 @@ public static class CsvGeneratedWriterSupport
         return false;
     }
 
-    public static void WriteEscapedUtf8(IBufferWriter<byte> writer, string? value, byte delimiter)
+    public static void WriteEscapedUtf8(IBufferWriter<byte> writer, string? value, byte delimiter, bool excelCompatibility = false)
     {
         if (string.IsNullOrEmpty(value))
         {
             return;
         }
 
-        WriteEscapedUtf8(writer, value.AsSpan(), delimiter);
+        WriteEscapedUtf8(writer, value.AsSpan(), delimiter, excelCompatibility);
     }
 
-    public static void WriteEscapedUtf8(IBufferWriter<byte> writer, ReadOnlySpan<char> value, byte delimiter)
+    public static void WriteEscapedUtf8(IBufferWriter<byte> writer, ReadOnlySpan<char> value, byte delimiter, bool excelCompatibility = false)
     {
         if (value.IsEmpty)
         {
             return;
         }
 
-        var bytes = Encoding.UTF8.GetBytes(value.ToString());
+        var text = excelCompatibility ? NormalizeExcelNewLines(value) : value.ToString();
+        var bytes = Encoding.UTF8.GetBytes(text);
         WriteEscapedUtf8(writer, bytes, delimiter);
     }
 
@@ -188,6 +216,29 @@ public static class CsvGeneratedWriterSupport
         var close = writer.GetSpan(1);
         close[0] = QuoteByte;
         writer.Advance(1);
+    }
+
+    private static string NormalizeExcelNewLines(ReadOnlySpan<char> value)
+    {
+        var builder = new StringBuilder(value.Length);
+        for (var i = 0; i < value.Length; i++)
+        {
+            var current = value[i];
+            if (current == '\r' || current == '\n')
+            {
+                if (current == '\r' && i + 1 < value.Length && value[i + 1] == '\n')
+                {
+                    i++;
+                }
+
+                builder.Append("\r\n");
+                continue;
+            }
+
+            builder.Append(current);
+        }
+
+        return builder.ToString();
     }
 
     private static bool NeedsEscaping(ReadOnlySpan<byte> value, byte delimiter)

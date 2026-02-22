@@ -91,6 +91,7 @@ internal static class CsvValueFormatter
 
     private static void WriteEscapedSpan(TextWriter writer, ReadOnlySpan<char> value, char delimiter, CsvSerializationContext context)
     {
+        var excelMode = context.Options.UseExcelEscaping;
         if (!NeedsEscaping(value, delimiter))
         {
             writer.Write(value);
@@ -107,11 +108,21 @@ internal static class CsvValueFormatter
             if (current == '"')
             {
                 builder.Append("\"\"");
+                continue;
             }
-            else
+
+            if (excelMode && (current == '\r' || current == '\n'))
             {
-                builder.Append(current);
+                if (current == '\r' && i + 1 < value.Length && value[i + 1] == '\n')
+                {
+                    i++;
+                }
+
+                builder.Append("\r\n");
+                continue;
             }
+
+            builder.Append(current);
         }
 
         builder.Append('"');
@@ -120,6 +131,7 @@ internal static class CsvValueFormatter
 
     private static async ValueTask WriteEscapedMemoryAsync(TextWriter writer, ReadOnlyMemory<char> value, char delimiter, CancellationToken cancellationToken, CsvSerializationContext context)
     {
+        var excelMode = context.Options.UseExcelEscaping;
         if (!NeedsEscaping(value.Span, delimiter))
         {
             await writer.WriteAsync(value).ConfigureAwait(false);
@@ -138,11 +150,21 @@ internal static class CsvValueFormatter
             if (current == '"')
             {
                 builder.Append("\"\"");
+                continue;
             }
-            else
+
+            if (excelMode && (current == '\r' || current == '\n'))
             {
-                builder.Append(current);
+                if (current == '\r' && i + 1 < span.Length && span[i + 1] == '\n')
+                {
+                    i++;
+                }
+
+                builder.Append("\r\n");
+                continue;
             }
+
+            builder.Append(current);
         }
 
         builder.Append('"');

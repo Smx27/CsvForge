@@ -12,6 +12,7 @@ internal static class Utf8CsvWriter
 {
     public static void Write<T>(IEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions options)
     {
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         var generatedWriter = CsvUtf8TypeWriterCache<T>.Resolve();
         if (generatedWriter is not null)
         {
@@ -26,6 +27,7 @@ internal static class Utf8CsvWriter
 
     public static async Task WriteAsync<T>(IEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions options, CancellationToken cancellationToken)
     {
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         var generatedWriter = CsvUtf8TypeWriterCache<T>.Resolve();
         if (generatedWriter is not null)
         {
@@ -41,6 +43,7 @@ internal static class Utf8CsvWriter
 
     public static async Task WriteAsync<T>(IAsyncEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions options, CancellationToken cancellationToken)
     {
+        options = CsvOptions.NormalizeForWrite(options, streamOrFileTarget: false);
         var generatedWriter = CsvUtf8TypeWriterCache<T>.Resolve();
         if (generatedWriter is not null)
         {
