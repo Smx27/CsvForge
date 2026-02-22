@@ -12,5 +12,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CsvForge\CsvForge.csproj" />
+    <ProjectReference Include="..\..\src\CsvForge.SourceGenerator\CsvForge.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>
