@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using System.Text.Json.Serialization;
 using CsvForge;
 using CsvForge.Attributes;
@@ -30,7 +32,7 @@ public class CsvWriterCoverageTests
             }
         };
 
-        var output = SerializeSync(rows, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf });
+        var output = SerializeSync(rows, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true });
         var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
         Assert.Equal("Id,OptionalInt,OptionalDate,OptionalText,RequiredText", lines[0]);
@@ -51,7 +53,7 @@ public class CsvWriterCoverageTests
             }
         };
 
-        var output = SerializeSync(rows, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf });
+        var output = SerializeSync(rows, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true });
         Assert.StartsWith("Text,Quote,NewLine\n", output, StringComparison.Ordinal);
         Assert.Contains("\"a,b\"", output, StringComparison.Ordinal);
         Assert.Contains("\"say \"\"hello\"\"\"", output, StringComparison.Ordinal);
@@ -71,7 +73,8 @@ public class CsvWriterCoverageTests
         var output = SerializeSync(rows, new CsvOptions
         {
             Delimiter = delimiter,
-            NewLineBehavior = CsvNewLineBehavior.Lf
+            NewLineBehavior = CsvNewLineBehavior.Lf,
+            EnableRuntimeMetadataFallback = true
         });
 
         var expectedSeparator = delimiter.ToString();
@@ -86,8 +89,8 @@ public class CsvWriterCoverageTests
     {
         var rows = new[] { new DelimitedRow { A = "x", B = "y" } };
 
-        var withHeader = SerializeSync(rows, new CsvOptions { IncludeHeader = true, NewLineBehavior = CsvNewLineBehavior.Lf });
-        var withoutHeader = SerializeSync(rows, new CsvOptions { IncludeHeader = false, NewLineBehavior = CsvNewLineBehavior.Lf });
+        var withHeader = SerializeSync(rows, new CsvOptions { IncludeHeader = true, NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true });
+        var withoutHeader = SerializeSync(rows, new CsvOptions { IncludeHeader = false, NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true });
 
         Assert.StartsWith("A,B\n", withHeader, StringComparison.Ordinal);
         Assert.Equal("x,y\n", withoutHeader);
@@ -108,7 +111,7 @@ public class CsvWriterCoverageTests
             }
         };
 
-        var output = SerializeSync(rows, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf });
+        var output = SerializeSync(rows, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true });
         var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
         Assert.Equal("first,second,json_name,csv_name,Plain", lines[0]);
@@ -124,7 +127,7 @@ public class CsvWriterCoverageTests
             new() { A = "3", B = "4" }
         };
 
-        var options = new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf };
+        var options = new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true };
 
         var syncOutput = SerializeSync(enumerable, options);
         var asyncOutput = await SerializeAsync(enumerable, options);
@@ -143,7 +146,7 @@ public class CsvWriterCoverageTests
         var array = list.ToArray();
         IEnumerable<DelimitedRow> enumerable = list;
 
-        var options = new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf };
+        var options = new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true };
 
         var listOutput = SerializeSync(list, options);
         var arrayOutput = SerializeSync(array, options);
@@ -168,7 +171,7 @@ public class CsvWriterCoverageTests
             })
             .ToArray();
 
-        var options = new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf };
+        var options = new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true };
 
         var syncWatch = Stopwatch.StartNew();
         var syncOutput = SerializeSync(rows, options);
@@ -191,6 +194,40 @@ public class CsvWriterCoverageTests
 
         Assert.InRange(syncWatch.Elapsed.TotalSeconds, 0, 30);
         Assert.InRange(asyncWatch.Elapsed.TotalSeconds, 0, 30);
+    }
+
+    [Fact]
+    public void Write_ShouldRequireGeneratedWriterOrExplicitRuntimeFallbackOptIn()
+    {
+        var rows = new[] { new FallbackOptInRow { Value = 10 } };
+        using var writer = new StringWriter();
+
+        var exception = Assert.Throws<InvalidOperationException>(() => CsvWriter.Write(rows, writer, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf }));
+        Assert.Contains("EnableRuntimeMetadataFallback", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Write_ShouldUseRegisteredGeneratedWriterWithoutRuntimeFallback()
+    {
+        CsvTypeWriterCache<GeneratedPathRow>.Register(GeneratedPathRowWriter.Instance);
+        var rows = new[] { new GeneratedPathRow { Value = 7 } };
+        using var writer = new StringWriter();
+
+        CsvWriter.Write(rows, writer, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf });
+
+        Assert.Equal("value\n7\n", writer.ToString());
+    }
+
+    [Fact]
+    public void RuntimeFallbackPath_ShouldBeAnnotatedWithRequiresUnreferencedCode()
+    {
+        var serializerType = typeof(CsvWriter).Assembly.GetType("CsvForge.CsvSerializer", throwOnError: true)!;
+        var method = serializerType.GetMethod("CreateGeneratedWriterRequiredException", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var attribute = method!.GetCustomAttribute<RequiresUnreferencedCodeAttribute>();
+        Assert.NotNull(attribute);
+        Assert.Contains("not trimming-safe", attribute!.Message, StringComparison.Ordinal);
     }
 
     private static string SerializeSync<T>(IEnumerable<T> rows, CsvOptions options)
@@ -277,5 +314,42 @@ public class CsvWriterCoverageTests
         public string Name { get; set; } = string.Empty;
 
         public string Note { get; set; } = string.Empty;
+    }
+
+    private sealed class FallbackOptInRow
+    {
+        public int Value { get; set; }
+    }
+
+    private sealed class GeneratedPathRow
+    {
+        public int Value { get; set; }
+    }
+
+    private sealed class GeneratedPathRowWriter : ICsvTypeWriter<GeneratedPathRow>
+    {
+        public static GeneratedPathRowWriter Instance { get; } = new();
+
+        public void WriteHeader(TextWriter writer, CsvOptions options)
+        {
+            writer.Write("value");
+        }
+
+        public void WriteRow(TextWriter writer, GeneratedPathRow value, CsvOptions options)
+        {
+            writer.Write(value.Value);
+        }
+
+        public ValueTask WriteHeaderAsync(TextWriter writer, CsvOptions options, CancellationToken cancellationToken)
+        {
+            WriteHeader(writer, options);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask WriteRowAsync(TextWriter writer, GeneratedPathRow value, CsvOptions options, CancellationToken cancellationToken)
+        {
+            WriteRow(writer, value, options);
+            return ValueTask.CompletedTask;
+        }
     }
 }

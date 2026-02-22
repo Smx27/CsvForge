@@ -48,6 +48,14 @@ public sealed class CsvOptions
     /// </summary>
     public CsvHeterogeneousHeaderBehavior HeterogeneousHeaderBehavior { get; init; } = CsvHeterogeneousHeaderBehavior.Union;
 
+    /// <summary>
+    /// Enables runtime reflection-based metadata fallback when no generated <c>ICsvTypeWriter&lt;T&gt;</c> is available.
+    /// </summary>
+    /// <remarks>
+    /// This fallback is intended for non-AOT scenarios. Keep this option disabled in NativeAOT or trimmed applications and prefer generated writers.
+    /// </remarks>
+    public bool EnableRuntimeMetadataFallback { get; init; }
+
     internal string NewLine => NewLineBehavior switch
     {
         CsvNewLineBehavior.Lf => "\n",
