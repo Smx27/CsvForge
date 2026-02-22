@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Threading.Tasks;
+using System.Reflection;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 using CsvForge;
@@ -13,8 +10,9 @@ public class CsvSerializationBenchmarks
 {
     private TestRow[] _rows = Array.Empty<TestRow>();
     private CsvOptions _options = null!;
+    private PropertyInfo[] _naiveProperties = Array.Empty<PropertyInfo>();
 
-    [Params(100_000)]
+    [Params(1_000, 10_000, 100_000)]
     public int RowCount { get; set; }
 
     [GlobalSetup]
@@ -33,10 +31,28 @@ public class CsvSerializationBenchmarks
             StreamWriterBufferSize = 64 * 1024,
             NewLineBehavior = CsvNewLineBehavior.Lf
         };
+
+        _naiveProperties = typeof(TestRow).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+    }
+
+    [Benchmark(Baseline = true)]
+    public string NaiveReflectionSync()
+    {
+        using var writer = new StringWriter();
+        WriteNaiveSync(_rows, writer, _naiveProperties);
+        return writer.ToString();
     }
 
     [Benchmark]
-    public string SerializeArraySync()
+    public async Task<string> NaiveReflectionAsync()
+    {
+        using var writer = new StringWriter();
+        await WriteNaiveAsync(_rows, writer, _naiveProperties).ConfigureAwait(false);
+        return writer.ToString();
+    }
+
+    [Benchmark]
+    public string CsvForgeOptimizedSync()
     {
         using var writer = new StringWriter();
         CsvWriter.Write(_rows, writer, _options);
@@ -44,34 +60,68 @@ public class CsvSerializationBenchmarks
     }
 
     [Benchmark]
-    public async Task<string> SerializeArrayAsync()
+    public async Task<string> CsvForgeOptimizedAsync()
     {
         using var writer = new StringWriter();
         await CsvWriter.WriteAsync(_rows, writer, _options).ConfigureAwait(false);
         return writer.ToString();
     }
 
-    [Benchmark]
-    public AllocationProbeResult AllocationProbe100k()
+    private static void WriteNaiveSync(IEnumerable<TestRow> rows, TextWriter writer, PropertyInfo[] properties)
     {
-        var profiles = new List<SerializationProfile>();
-        CsvProfilingHooks.OnSerializationCompleted = profile => profiles.Add(profile);
+        writer.WriteLine(string.Join(",", properties.Select(p => p.Name)));
 
-        try
+        foreach (var row in rows)
         {
-            using var writer = new StringWriter();
-            CsvWriter.Write(_rows, writer, _options);
-        }
-        finally
-        {
-            CsvProfilingHooks.OnSerializationCompleted = null;
-        }
+            var line = string.Empty;
 
-        var profile = profiles.Count > 0 ? profiles[^1] : default;
-        return new AllocationProbeResult(profile.RowsWritten, profile.ColumnCount, profile.AllocatedBytes);
+            for (var i = 0; i < properties.Length; i++)
+            {
+                if (i > 0)
+                {
+                    line += ",";
+                }
+
+                var value = properties[i].GetValue(row)?.ToString() ?? string.Empty;
+                line += EscapeCsv(value);
+            }
+
+            writer.WriteLine(line);
+        }
     }
 
-    public readonly record struct AllocationProbeResult(int Rows, int Columns, long AllocatedBytes);
+    private static async Task WriteNaiveAsync(IEnumerable<TestRow> rows, TextWriter writer, PropertyInfo[] properties)
+    {
+        await writer.WriteLineAsync(string.Join(",", properties.Select(p => p.Name))).ConfigureAwait(false);
+
+        foreach (var row in rows)
+        {
+            var line = string.Empty;
+
+            for (var i = 0; i < properties.Length; i++)
+            {
+                if (i > 0)
+                {
+                    line += ",";
+                }
+
+                var value = properties[i].GetValue(row)?.ToString() ?? string.Empty;
+                line += EscapeCsv(value);
+            }
+
+            await writer.WriteLineAsync(line).ConfigureAwait(false);
+        }
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        if (value.IndexOfAny([',', '"', '\r', '\n']) == -1)
+        {
+            return value;
+        }
+
+        return $"\"{value.Replace("\"", "\"\"")}\"";
+    }
 
     public sealed record TestRow(int Id, string Name, string Notes);
 }
