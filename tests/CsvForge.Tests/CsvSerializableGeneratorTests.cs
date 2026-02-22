@@ -109,6 +109,72 @@ public partial class NamePrecedence
     }
 
 
+
+    [Fact]
+    public void GeneratesUtf8PrimitiveFastPathWriter()
+    {
+        var input = """
+using CsvForge.Attributes;
+using System;
+
+namespace Demo;
+
+[CsvSerializable]
+public partial class PrimitiveRow
+{
+    public int Id { get; set; }
+    public long Count { get; set; }
+    public double Ratio { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public Guid CorrelationId { get; set; }
+    public bool IsActive { get; set; }
+    public int? OptionalCount { get; set; }
+}
+""";
+
+        var result = RunGenerator(input);
+        var utf8Generated = result.GeneratedTrees.Single(tree => tree.FilePath.EndsWith("PrimitiveRow_CsvUtf8Writer.g.cs", System.StringComparison.Ordinal));
+        var utf8GeneratedText = utf8Generated.GetText().ToString().Trim();
+        var utf8ExpectedText = File.ReadAllText(Path.Combine(GetProjectRoot(), "tests", "CsvForge.Tests", "GoldenFiles", "PrimitiveRow_CsvUtf8Writer.g.cs")).Trim();
+        Assert.Equal(utf8ExpectedText, utf8GeneratedText);
+    }
+
+    [Fact]
+    public void EmitsUtf8FormatterFastPathsForSupportedPrimitives()
+    {
+        var input = """
+using CsvForge.Attributes;
+using System;
+
+namespace Demo;
+
+[CsvSerializable]
+public partial class PrimitivePatterns
+{
+    public int IntValue { get; set; }
+    public long LongValue { get; set; }
+    public double DoubleValue { get; set; }
+    public decimal DecimalValue { get; set; }
+    public DateTime DateValue { get; set; }
+    public Guid GuidValue { get; set; }
+    public int? NullableInt { get; set; }
+}
+""";
+
+        var result = RunGenerator(input);
+        var utf8Generated = result.GeneratedTrees.Single(tree => tree.FilePath.EndsWith("PrimitivePatterns_CsvUtf8Writer.g.cs", System.StringComparison.Ordinal));
+        var generatedText = utf8Generated.GetText().ToString();
+
+        Assert.Contains("Utf8Formatter.TryFormat(value.IntValue, utf8Formatted, out var bytesWritten, 'D')", generatedText);
+        Assert.Contains("Utf8Formatter.TryFormat(value.LongValue, utf8Formatted, out var bytesWritten, 'D')", generatedText);
+        Assert.Contains("Utf8Formatter.TryFormat(value.DoubleValue, utf8Formatted, out var bytesWritten, 'G')", generatedText);
+        Assert.Contains("Utf8Formatter.TryFormat(value.DecimalValue, utf8Formatted, out var bytesWritten, 'G')", generatedText);
+        Assert.Contains("Utf8Formatter.TryFormat(value.DateValue, utf8Formatted, out var bytesWritten, 'O')", generatedText);
+        Assert.Contains("Utf8Formatter.TryFormat(value.GuidValue, utf8Formatted, out var bytesWritten, 'D')", generatedText);
+        Assert.Contains("Utf8Formatter.TryFormat(NullableIntValue.GetValueOrDefault(), utf8Formatted, out var bytesWritten, 'D')", generatedText);
+    }
+
     [Fact]
     public void EmitsUtf8AndUtf16WriterTypes()
     {
