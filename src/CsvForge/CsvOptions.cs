@@ -25,6 +25,19 @@ public enum CsvHeterogeneousHeaderBehavior
     FirstShapeLock
 }
 
+public enum CsvUnionAsyncBehavior
+{
+    /// <summary>
+    /// Throws when union header discovery requires replaying a non-replayable source.
+    /// </summary>
+    Throw,
+
+    /// <summary>
+    /// Falls back to first-shape-lock semantics for non-replayable async sources.
+    /// </summary>
+    FirstShapeLock
+}
+
 public sealed class CsvOptions
 {
     public static CsvOptions Default { get; } = new();
@@ -47,6 +60,11 @@ public sealed class CsvOptions
     /// Controls header generation when serializing heterogeneous rows (for example, <c>IEnumerable&lt;object&gt;</c> or dictionary-based rows).
     /// </summary>
     public CsvHeterogeneousHeaderBehavior HeterogeneousHeaderBehavior { get; init; } = CsvHeterogeneousHeaderBehavior.Union;
+
+    /// <summary>
+    /// Controls behavior for union header discovery when serializing <see cref="IAsyncEnumerable{T}"/> dynamic rows.
+    /// </summary>
+    public CsvUnionAsyncBehavior UnionAsyncBehavior { get; init; } = CsvUnionAsyncBehavior.Throw;
 
     /// <summary>
     /// Enables runtime reflection-based metadata fallback when no generated <c>ICsvTypeWriter&lt;T&gt;</c> is available.
