@@ -29,6 +29,14 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
+    private static readonly DiagnosticDescriptor CsvSerializableCoverageSuggestion = new(
+        "CSVGEN003",
+        "Consider CsvSerializable for exported type",
+        "Exported type '{0}' is not annotated with [CsvSerializable]. Add the attribute to ensure generated writer coverage.",
+        "CsvForge.Generator",
+        DiagnosticSeverity.Info,
+        isEnabledByDefault: true);
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var candidates = context.SyntaxProvider
@@ -38,8 +46,17 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
             .Where(static c => c is not null)
             .Select(static (c, _) => c!);
 
+        var exportedTypes = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                static (node, _) => node is TypeDeclarationSyntax,
+                static (ctx, _) => GetExportedTypeWithoutCsvSerializable(ctx))
+            .Where(static c => c is not null)
+            .Select(static (c, _) => c!);
+
         var compilationAndCandidates = context.CompilationProvider.Combine(candidates.Collect());
         context.RegisterSourceOutput(compilationAndCandidates, static (spc, source) => Execute(spc, source.Right));
+
+        context.RegisterSourceOutput(exportedTypes.Collect(), static (spc, source) => ReportCoverageSuggestions(spc, source));
     }
 
     private static INamedTypeSymbol? GetCandidate(GeneratorSyntaxContext context)
@@ -67,6 +84,28 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
         return null;
     }
 
+
+    private static INamedTypeSymbol? GetExportedTypeWithoutCsvSerializable(GeneratorSyntaxContext context)
+    {
+        if (context.Node is not TypeDeclarationSyntax typeDeclaration)
+        {
+            return null;
+        }
+
+        var symbol = context.SemanticModel.GetDeclaredSymbol(typeDeclaration) as INamedTypeSymbol;
+        if (symbol is null)
+        {
+            return null;
+        }
+
+        if (!IsExported(symbol) || HasCsvSerializableAttribute(symbol))
+        {
+            return null;
+        }
+
+        return symbol;
+    }
+
     private static void Execute(SourceProductionContext context, ImmutableArray<INamedTypeSymbol> candidates)
     {
         var seen = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
@@ -86,6 +125,52 @@ public sealed class CsvSerializableGenerator : IIncrementalGenerator
             var columns = CollectColumns(context, symbol);
             EmitWriters(context, symbol, columns);
         }
+    }
+
+
+    private static void ReportCoverageSuggestions(SourceProductionContext context, ImmutableArray<INamedTypeSymbol> exportedTypes)
+    {
+        var seen = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        foreach (var symbol in exportedTypes)
+        {
+            if (!seen.Add(symbol))
+            {
+                continue;
+            }
+
+            context.ReportDiagnostic(Diagnostic.Create(CsvSerializableCoverageSuggestion, symbol.Locations.FirstOrDefault(), symbol.ToDisplayString()));
+        }
+    }
+
+    private static bool IsExported(INamedTypeSymbol symbol)
+    {
+        if (symbol.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal))
+        {
+            return false;
+        }
+
+        for (var containing = symbol.ContainingType; containing is not null; containing = containing.ContainingType)
+        {
+            if (containing.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool HasCsvSerializableAttribute(INamedTypeSymbol symbol)
+    {
+        foreach (var attribute in symbol.GetAttributes())
+        {
+            if (attribute.AttributeClass?.ToDisplayString() == "CsvForge.Attributes.CsvSerializableAttribute")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static List<ColumnModel> CollectColumns(SourceProductionContext context, INamedTypeSymbol symbol)

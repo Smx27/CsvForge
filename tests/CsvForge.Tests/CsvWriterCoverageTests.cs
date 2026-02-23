@@ -199,6 +199,39 @@ public class CsvWriterCoverageTests
     }
 
     [Fact]
+    public void StrictMode_ShouldRejectReflectionFallbackEvenWhenExplicitlyEnabled()
+    {
+        var rows = new[] { new FallbackOptInRow { Value = 42 } };
+        using var writer = new StringWriter();
+
+        var exception = Assert.Throws<InvalidOperationException>(() => CsvWriter.Write(rows, writer, new CsvOptions
+        {
+            NewLineBehavior = CsvNewLineBehavior.Lf,
+            EnableRuntimeMetadataFallback = true,
+            StrictMode = true
+        }));
+
+        Assert.Contains("StrictMode", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("[CsvSerializable]", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NonStrictMode_ShouldPreserveReflectionFallbackBehavior()
+    {
+        var rows = new[] { new FallbackOptInRow { Value = 11 } };
+        using var writer = new StringWriter();
+
+        CsvWriter.Write(rows, writer, new CsvOptions
+        {
+            NewLineBehavior = CsvNewLineBehavior.Lf,
+            EnableRuntimeMetadataFallback = true,
+            StrictMode = false
+        });
+
+        Assert.Equal("Value\n11\n", writer.ToString());
+    }
+
+    [Fact]
     public void Write_ShouldRequireGeneratedWriterOrExplicitRuntimeFallbackOptIn()
     {
         var rows = new[] { new FallbackOptInRow { Value = 10 } };

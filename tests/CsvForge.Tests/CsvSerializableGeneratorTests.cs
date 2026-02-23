@@ -197,6 +197,23 @@ public partial class DualWriter
     }
 
     [Fact]
+    public void ReportsCoverageDiagnosticForExportedTypeWithoutCsvSerializable()
+    {
+        var input = """
+namespace Demo;
+
+public partial class NotAnnotated
+{
+    public int Id { get; set; }
+}
+""";
+
+        var result = RunGenerator(input);
+        var diagnostic = Assert.Single(result.Diagnostics.Where(static d => d.Id == "CSVGEN003"));
+        Assert.Contains("Demo.NotAnnotated", diagnostic.GetMessage());
+    }
+
+    [Fact]
     public void ReportsDeterministicDiagnosticForUnsupportedIndexer()
     {
         var input = """

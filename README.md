@@ -267,6 +267,24 @@ Recommended for:
 
 ---
 
+## NativeAOT and trimmed deployments
+
+For NativeAOT, trimming, and enterprise hardening scenarios, prefer generated writers and enforce strict mode:
+
+```csharp
+var options = new CsvOptions
+{
+    StrictMode = true
+};
+```
+
+Guidance:
+- Annotate exported row types with `[CsvSerializable]` so the source generator emits `ICsvTypeWriter<T>` registrations.
+- Keep `EnableRuntimeMetadataFallback = false` (default) for AOT and trimmed builds.
+- Optionally compile with `CSVFORGE_STRICT_MODE` to make strict mode the default across your build.
+
+In strict mode, CsvForge fails fast when no generated writer is registered for a model type.
+
 ## CSV escaping behavior
 
 `CsvForge` follows standard CSV escaping rules:
