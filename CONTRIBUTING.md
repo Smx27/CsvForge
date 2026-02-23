@@ -1,73 +1,133 @@
 # Contributing to CsvForge
 
-Thanks for your interest in contributing to CsvForge. This guide covers local setup, coding expectations, docs/samples updates, performance validation, and pull request quality checks.
+Thank you for helping improve CsvForge. This project is performance-critical infrastructure software, and we treat contributions with production rigor.
 
-## Local development setup
+## Table of Contents
 
-1. Ensure you have a current .NET SDK installed (recommended: latest stable LTS).
-2. Restore dependencies:
+- [Development Setup](#development-setup)
+- [Coding Standards](#coding-standards)
+- [Source Generator Guidelines](#source-generator-guidelines)
+- [Benchmark Validation Rules](#benchmark-validation-rules)
+- [Testing Expectations](#testing-expectations)
+- [Pull Request Process](#pull-request-process)
 
-   ```bash
-   dotnet restore
-   ```
+---
 
-3. Build the solution:
+## Development Setup
 
-   ```bash
-   dotnet build
-   ```
+### Prerequisites
 
-4. Run tests:
+- .NET 11 SDK (preview channel as required)
+- Git
+- Optional: BenchmarkDotNet-friendly environment for stable benchmark runs
 
-   ```bash
-   dotnet test
-   ```
+### Clone and build
 
-Use the solution root as your working directory unless you are validating a specific project in isolation.
+```bash
+git clone https://github.com/your-org/CsvForge.git
+cd CsvForge
+dotnet restore
+dotnet build CsvForge.sln -c Release
+```
 
-## Coding style expectations
+### Run tests
 
-- Prefer clear, readable implementations over clever but hard-to-maintain logic.
-- Keep allocations and hot-path overhead in mind, especially in writer and formatter internals.
-- Follow existing naming and file-organization conventions in the surrounding code.
-- Keep public API changes intentional and documented.
-- Add or update tests when behavior changes.
-- Avoid introducing unnecessary dependencies.
+```bash
+dotnet test tests/CsvForge.Tests/CsvForge.Tests.csproj -c Release
+```
 
-If your change touches serialization behavior, generated output, or options handling, include targeted coverage in `tests/CsvForge.Tests`.
+### Run benchmarks
 
-## Updating docs and samples
+```bash
+dotnet run -c Release --project benchmarks/CsvForge.Benchmarks/CsvForge.Benchmarks.csproj
+```
 
-When you add or change user-facing behavior:
+---
 
-- Update the relevant documentation under `docs/` (for example: basic usage, advanced usage, performance, or FAQ).
-- Update or add runnable sample projects under `samples/` when practical.
-- Ensure README links and examples remain accurate.
-- Keep examples minimal, compilable, and aligned with current API guidance.
+## Coding Standards
 
-## Performance-sensitive changes
+CsvForge follows **performance-first engineering** principles.
 
-For changes that may affect throughput, allocations, or memory usage:
+### Core rules
 
-1. Run benchmark validation with Release configuration:
+1. **Prefer `Span<T>`, `ReadOnlySpan<T>`, and pooled buffers** in hot paths.
+2. **Avoid allocations in per-row/per-cell loops** unless justified and documented.
+3. **Do not introduce reflection-based work in runtime critical paths**.
+4. **Keep branches predictable** and avoid hidden culture-sensitive conversions.
+5. **Guard correctness first**: CSV escaping, encoding safety, and deterministic output are non-negotiable.
 
-   ```bash
-   dotnet run -c Release --project benchmarks/CsvForge.Benchmarks/CsvForge.Benchmarks.csproj
-   ```
+### API and style
 
-2. Compare before/after results for representative scenarios.
-3. Note significant deltas in the PR description (especially regressions and tradeoffs).
-4. If benchmarks are not possible in your environment, explain why and provide the best available evidence (profiling traces, focused micro-measurements, or test-based indicators).
+- Keep public APIs explicit and stable.
+- Follow existing naming conventions and project layout.
+- Add XML docs for new public types/members.
+- Prefer small, composable internal components over monolithic implementations.
 
-## Pull request checklist
+---
 
-Before requesting review, confirm:
+## Source Generator Guidelines
 
-- [ ] `dotnet build` and `dotnet test` pass locally.
-- [ ] Documentation is updated for any user-visible behavior changes.
-- [ ] Samples are added/updated when they improve discoverability or clarity.
-- [ ] Performance-sensitive changes include benchmark validation details.
-- [ ] Release/changelog notes are captured in the PR description for noteworthy changes.
-- [ ] The PR description clearly explains motivation, approach, and any compatibility impact.
+The Roslyn generator is a strategic component and must remain robust under incremental builds and AOT scenarios.
 
-Thank you for helping improve CsvForge.
+- Place generator logic under `src/CsvForge.SourceGenerator`.
+- Keep diagnostics actionable, precise, and user-friendly.
+- Preserve deterministic output ordering for generated members/files.
+- Add/maintain golden-file tests for generated output when behavior changes.
+- Ensure generated code avoids reflection and is trimming-safe.
+
+When changing generator behavior:
+
+1. Update generator tests in `tests/CsvForge.Tests`.
+2. Update approval/golden files as needed.
+3. Document user-visible behavior changes in docs and PR notes.
+
+---
+
+## Benchmark Validation Rules
+
+Any change touching writer internals, formatting, encoding, metadata caches, or compression must include benchmark evidence.
+
+### Required benchmark notes in PR
+
+- Baseline branch/commit
+- Test branch/commit
+- Hardware + OS summary
+- .NET SDK/runtime version
+- Benchmark command used
+- Throughput and allocation deltas
+
+### Performance acceptance guidance
+
+- Regressions in hot scenarios must be justified and approved by maintainers.
+- If a tradeoff is made for correctness/safety, document it explicitly.
+
+---
+
+## Testing Expectations
+
+- Add or update unit tests for behavior changes.
+- Include edge cases: null handling, escaping, delimiters, culture-sensitive values, and Excel compatibility mode.
+- For checkpoint features, include resume and idempotency-oriented scenarios.
+- For compression features, validate stream integrity and content equivalence.
+
+---
+
+## Pull Request Process
+
+1. Open or reference an issue describing the change.
+2. Create a focused branch (`feature/...`, `fix/...`, `perf/...`).
+3. Keep commits small and logically grouped.
+4. Ensure build/tests pass locally.
+5. Run benchmarks for performance-sensitive changes.
+6. Update docs/changelog for user-visible impact.
+7. Submit PR using the provided template.
+
+### PR review checklist
+
+- [ ] Change is scoped and clearly explained.
+- [ ] Tests added/updated and passing.
+- [ ] Benchmarks included for performance-sensitive modifications.
+- [ ] Documentation updated (README/docs/inline XML docs).
+- [ ] Backward compatibility considerations addressed.
+
+Thank you for building CsvForge with us.
