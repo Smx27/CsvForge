@@ -30,7 +30,7 @@ internal static class CsvSerializer
             return;
         }
 
-        EnsureRuntimeFallbackEnabled<T>(options);
+        EnsureGeneratedWriterOrRuntimeFallbackAllowed<T>(options);
         var metadata = TypeMetadataCache.GetOrAdd<T>();
         var newLine = options.NewLine;
         using var context = new CsvSerializationContext(options);
@@ -65,7 +65,7 @@ internal static class CsvSerializer
             return;
         }
 
-        EnsureRuntimeFallbackEnabled<T>(options);
+        EnsureGeneratedWriterOrRuntimeFallbackAllowed<T>(options);
         var metadata = TypeMetadataCache.GetOrAdd<T>();
         var newLine = options.NewLine;
         using var context = new CsvSerializationContext(options);
@@ -100,7 +100,7 @@ internal static class CsvSerializer
             return;
         }
 
-        EnsureRuntimeFallbackEnabled<T>(options);
+        EnsureGeneratedWriterOrRuntimeFallbackAllowed<T>(options);
         var metadata = TypeMetadataCache.GetOrAdd<T>();
         var newLine = options.NewLine;
         using var context = new CsvSerializationContext(options);
@@ -393,14 +393,24 @@ internal static class CsvSerializer
         await writer.WriteAsync(newLine.AsMemory()).ConfigureAwait(false);
     }
 
-    private static void EnsureRuntimeFallbackEnabled<T>(CsvOptions options)
+    private static void EnsureGeneratedWriterOrRuntimeFallbackAllowed<T>(CsvOptions options)
     {
+        if (options.StrictMode)
+        {
+            throw CreateStrictModeGeneratedWriterRequiredException(typeof(T));
+        }
+
         if (options.EnableRuntimeMetadataFallback)
         {
             return;
         }
 
         throw CreateGeneratedWriterRequiredException(typeof(T));
+    }
+
+    private static InvalidOperationException CreateStrictModeGeneratedWriterRequiredException(Type type)
+    {
+        return new InvalidOperationException($"CsvOptions.StrictMode is enabled and no generated ICsvTypeWriter<{type.FullName}> is registered. Add [CsvSerializable] on the type and include generated registration for this model.");
     }
 
     [RequiresUnreferencedCode("Runtime metadata fallback uses reflection over public properties and is not trimming-safe. Prefer generated ICsvTypeWriter<T> implementations.")]

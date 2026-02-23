@@ -47,6 +47,12 @@ public enum CsvCompressionMode
 
 public sealed class CsvOptions
 {
+#if CSVFORGE_STRICT_MODE
+    private const bool StrictModeDefault = true;
+#else
+    private const bool StrictModeDefault = false;
+#endif
+
     public static CsvOptions Default { get; } = new();
 
     public char Delimiter { get; init; } = ',';
@@ -100,6 +106,14 @@ public sealed class CsvOptions
     /// This fallback is intended for non-AOT scenarios. Keep this option disabled in NativeAOT or trimmed applications and prefer generated writers.
     /// </remarks>
     public bool EnableRuntimeMetadataFallback { get; init; }
+
+    /// <summary>
+    /// Enforces generated writer usage and disallows reflection-based metadata fallback.
+    /// </summary>
+    /// <remarks>
+    /// Use this mode for NativeAOT or trimmed deployments. This can be enabled globally via the <c>CSVFORGE_STRICT_MODE</c> compilation symbol.
+    /// </remarks>
+    public bool StrictMode { get; init; } = StrictModeDefault;
 
     /// <summary>
     /// Controls whether CSV output is written as plain text, GZip, or a single-entry ZIP archive.
