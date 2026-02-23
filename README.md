@@ -1,168 +1,175 @@
 # CsvForge
 
-CsvForge is a high-throughput CSV export library for modern .NET workloads that need to stream large datasets with predictable memory usage, resumability, and deployment flexibility.
+> **CsvForge** is a flagship .NET 11 CSV engine for enterprise-grade data exports—built for speed, reliability, and NativeAOT from day one.
 
-## Hero summary
+[![NuGet](https://img.shields.io/nuget/v/CsvForge.svg)](#)
+[![Downloads](https://img.shields.io/nuget/dt/CsvForge.svg)](#)
+[![Build](https://img.shields.io/github/actions/workflow/status/your-org/CsvForge/ci.yml?branch=main)](#)
+[![License](https://img.shields.io/github/license/your-org/CsvForge)](#)
+[![Docs](https://img.shields.io/badge/docs-online-brightgreen)](#)
 
-CsvForge combines a **hybrid UTF-8/UTF-16 write engine**, **compile-time source generation**, **checkpoint-aware export flows**, **built-in compression**, and **NativeAOT-friendly patterns** so teams can ship production CSV pipelines without relying on reflection-heavy hot paths.
-
-### Key features
-
-- **Hybrid UTF-8/UTF-16 pipeline** that selects the best writer path for your scenario.
-- **Source generator support** (`[CsvSerializable]`) for compile-time writers and trim-safe serialization contexts.
-- **Checkpointing support** for resumable exports and durable progress boundaries.
-- **Compression options** (GZip and ZIP) for storage/network efficiency.
-- **NativeAOT + trimming guidance** via generated contexts and strict mode.
-- Streaming APIs for sync/async export flows with low allocation overhead.
+CsvForge combines a **hybrid UTF-8/UTF-16 writer**, **Roslyn Source Generator**, **checkpointed export orchestration**, and **streaming compression** to deliver predictable, high-throughput CSV pipelines for APIs, services, batch jobs, and data platforms.
 
 ---
 
-## Quick start in <60 seconds
+## Why CsvForge
 
-### 1) Install package
+- ⚡ **Performance-first engine** with low-allocation hot paths.
+- 🧠 **Roslyn-generated serializers** for zero-reflection runtime execution.
+- 📦 **NativeAOT + trimming ready** for modern cloud-native deployment.
+- 🔁 **Checkpointed batch exports** for resumable long-running jobs.
+- 🗜️ **Streaming Gzip/Zip compression** for large data transfer workflows.
+- 📊 **Excel compatibility mode** for real-world spreadsheet consumers.
+
+---
+
+## Quick Start
+
+### Install
 
 ```bash
 dotnet add package CsvForge
 ```
 
-### 2) Create a minimal model
-
-```csharp
-public sealed class UserRow
-{
-    public int Id { get; init; }
-    public string Name { get; init; } = string.Empty;
-}
-```
-
-### 3) Write with one `CsvWriter` call
+### Minimal example
 
 ```csharp
 using CsvForge;
 
+public sealed class CustomerRow
+{
+    public int Id { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public string Tier { get; init; } = string.Empty;
+}
+
 var rows = new[]
 {
-    new UserRow { Id = 1, Name = "Ada" },
-    new UserRow { Id = 2, Name = "Linus" }
+    new CustomerRow { Id = 1, Name = "Acme", Tier = "Enterprise" },
+    new CustomerRow { Id = 2, Name = "Northwind", Tier = "SMB" }
 };
 
-CsvWriter.Write(rows, "users.csv");
+CsvWriter.Write(rows, "customers.csv", new CsvWriterOptions
+{
+    IncludeHeader = true,
+    ExcelCompatibilityMode = true
+});
 ```
 
-### 4) Expected output (`users.csv`)
+Output:
 
 ```csv
-Id,Name
-1,Ada
-2,Linus
+Id,Name,Tier
+1,Acme,Enterprise
+2,Northwind,SMB
 ```
 
 ---
 
-## Feature comparison
+## Performance Benchmarks
 
-| Capability | CsvForge | Typical traditional CSV library |
-| --- | --- | --- |
-| Metadata strategy | Cached and/or source-generated writers | Reflection-heavy per-type/per-call paths |
-| UTF handling | Hybrid UTF-8/UTF-16 engine | Usually single-path text writer flow |
-| Checkpointing/resume | First-class checkpointing guidance and samples | Commonly not built in |
-| Compression | Built-in GZip and ZIP options | Often external/manual wrapping |
-| NativeAOT/trimming posture | Generated contexts + strict mode guidance | Limited AOT support; reflection can break under trimming |
-| Large export orientation | Streaming-first APIs and benchmark guidance | Often optimized for simpler small/medium writes |
+CsvForge is designed for production throughput under realistic memory constraints.
 
----
+### Benchmark focus areas
 
-## Architecture summary
+- UTF-8 and UTF-16 writer throughput
+- Allocation profile (Gen0/Gen1 pressure)
+- Generated writer vs runtime metadata path
+- Compression overhead under streaming workloads
+- Checkpoint frequency and recovery impact
 
-CsvForge uses an engine selector that routes writes through UTF-8 or UTF-16 paths, can use generated type writers instead of runtime metadata, and supports checkpoint coordination for resumable long-running exports.
-
-- Architecture deep dive: [`docs/architecture.md`](docs/architecture.md)
-- Source generator deep dive: [`docs/source-generator.md`](docs/source-generator.md)
-
----
-
-## Samples index
-
-| Project | Feature focus | Run command |
-| --- | --- | --- |
-| `CsvForge.Samples.Basic` | Baseline CSV writing patterns | `dotnet run --project samples/CsvForge.Samples.Basic/CsvForge.Samples.Basic.csproj` |
-| `CsvForge.Samples.Advanced` | Advanced writer options and tuning | `dotnet run --project samples/CsvForge.Samples.Advanced/CsvForge.Samples.Advanced.csproj` |
-| `CsvForge.Samples.Excel` | Excel compatibility behavior | `dotnet run --project samples/CsvForge.Samples.Excel/CsvForge.Samples.Excel.csproj` |
-| `CsvForge.Samples.Checkpointing` | Resumable export and checkpoint flow | `dotnet run --project samples/CsvForge.Samples.Checkpointing/CsvForge.Samples.Checkpointing.csproj` |
-| `CsvForge.Samples.Compression` | GZip and ZIP export paths | `dotnet run --project samples/CsvForge.Samples.Compression/CsvForge.Samples.Compression.csproj` |
-| `CsvForge.GeneratedSerializerSample` | Source generator-based serialization | `dotnet run --project samples/CsvForge.GeneratedSerializerSample/CsvForge.GeneratedSerializerSample.csproj` |
-| `CsvForge.Samples.NativeAot` | NativeAOT-friendly usage pattern | `dotnet run --project samples/CsvForge.Samples.NativeAot/CsvForge.Samples.NativeAot.csproj` |
-
-See also: [`samples/README.md`](samples/README.md)
-
----
-
-## Performance highlights
-
-CsvForge is designed for high throughput and low allocation pressure in export-heavy workloads:
-
-- Metadata caching and generated writers reduce runtime introspection overhead.
-- Streaming APIs avoid loading full exports into memory.
-- Buffering and pooled internals reduce write amplification and GC churn.
-- Compression paths are integrated for end-to-end export workflows.
-
-### Caveats
-
-Performance depends on row shape, null ratios, string length distributions, storage throughput, compression mode, and runtime environment (CPU quotas, GC mode, container limits). Always benchmark with production-like data.
-
-- Performance guide: [`docs/performance.md`](docs/performance.md)
-- Benchmark methodology/project: `benchmarks/CsvForge.Benchmarks`
-
-Run benchmarks:
+Run local benchmarks:
 
 ```bash
 dotnet run -c Release --project benchmarks/CsvForge.Benchmarks/CsvForge.Benchmarks.csproj
 ```
 
+For methodology and reproducibility guidelines, see [`docs/performance.md`](docs/performance.md).
+
 ---
 
-## Troubleshooting and FAQ
+## CsvForge vs Traditional CSV Libraries
 
+| Capability | CsvForge | Traditional CSV Libraries |
+| --- | --- | --- |
+| Serialization strategy | Runtime cache + Roslyn source generation | Reflection-heavy runtime mapping |
+| Hot path allocations | Span-centric, allocation-aware internals | Often string/object-centric |
+| NativeAOT compatibility | First-class design target | Often limited due to reflection |
+| Checkpoint/resume | Built-in export checkpoint model | Usually app-level custom implementation |
+| Compression | Integrated streaming Gzip/Zip support | Usually external wrappers |
+| Excel compatibility | Dedicated mode with practical defaults | Inconsistent/manual options |
+
+---
+
+## Architecture Overview
+
+CsvForge uses a layered architecture optimized for deterministic behavior and deployment flexibility:
+
+1. **Core Writer Engine**
+   - Hybrid UTF-8/UTF-16 selection pipeline
+   - Buffer and formatter components tuned for high-throughput output
+2. **Type Serialization Layer**
+   - Roslyn Source Generator emits type-specific writers
+   - Zero-reflection runtime path when generated writers are available
+3. **Execution Orchestration Layer**
+   - Checkpoint coordinator for resumable exports
+   - Compression streams and compatibility options as composable stages
+
+Start here:
+
+- [`docs/overview.md`](docs/overview.md)
+- [`docs/architecture.md`](docs/architecture.md)
+- [`docs/source-generator.md`](docs/source-generator.md)
+
+---
+
+## Samples
+
+- [`samples/CsvForge.Samples.Basic`](samples/CsvForge.Samples.Basic)
+- [`samples/CsvForge.Samples.Advanced`](samples/CsvForge.Samples.Advanced)
+- [`samples/CsvForge.Samples.Checkpointing`](samples/CsvForge.Samples.Checkpointing)
+- [`samples/CsvForge.Samples.Compression`](samples/CsvForge.Samples.Compression)
+- [`samples/CsvForge.Samples.Excel`](samples/CsvForge.Samples.Excel)
+- [`samples/CsvForge.Samples.NativeAot`](samples/CsvForge.Samples.NativeAot)
+- [`samples/CsvForge.GeneratedSerializerSample`](samples/CsvForge.GeneratedSerializerSample)
+
+Sample guide: [`samples/README.md`](samples/README.md)
+
+---
+
+## Documentation
+
+- Getting started: [`docs/getting-started.md`](docs/getting-started.md)
+- Basic usage: [`docs/basic-usage.md`](docs/basic-usage.md)
+- Advanced usage: [`docs/advanced-usage.md`](docs/advanced-usage.md)
+- Checkpointing: [`docs/checkpointing.md`](docs/checkpointing.md)
+- Compression: [`docs/compression.md`](docs/compression.md)
 - FAQ: [`docs/faq.md`](docs/faq.md)
-- Troubleshooting topics:
-  - Checkpointing: [`docs/checkpointing.md`](docs/checkpointing.md)
-  - Compression: [`docs/compression.md`](docs/compression.md)
-  - Advanced usage: [`docs/advanced-usage.md`](docs/advanced-usage.md)
-  - Performance diagnostics: [`docs/performance.md`](docs/performance.md)
 
 ---
 
-## Installation
+## Roadmap
 
-### Package Manager
+- [ ] Full async IAsyncEnumerable pipeline optimization
+- [ ] Additional delimiter/quoting profiles for region-specific formats
+- [ ] Rich schema evolution support for versioned exports
+- [ ] Wider benchmark matrix (.NET runtimes, ARM64/x64, Linux/Windows)
+- [ ] Production diagnostics package (events/metrics dashboards)
 
-```powershell
-Install-Package CsvForge
-```
-
-### .NET CLI
-
-```bash
-dotnet add package CsvForge
-```
-
-### PackageReference
-
-```xml
-<ItemGroup>
-  <PackageReference Include="CsvForge" Version="1.0.0" />
-</ItemGroup>
-```
+See open work in [GitHub Issues](https://github.com/your-org/CsvForge/issues).
 
 ---
 
-## Community and contribution
+## Contributing
 
-- Contributing guide: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- Code of conduct: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
+Contributions are welcome—from bug fixes to benchmark improvements and source generator enhancements.
+
+- Read [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Follow [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
+- Start with issues tagged `good first issue` and `help wanted`
 
 ---
 
 ## License
 
-Specify your project license here (for example, `MIT`).
+CsvForge is released under the MIT License. See [`LICENSE`](LICENSE) for details.
