@@ -156,6 +156,13 @@ dotnet add package CsvForge
 
 ---
 
+## Community and contribution
+
+- Contributing guide: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Code of conduct: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
+
+---
+
 ## License
 
 Specify your project license here (for example, `MIT`).
