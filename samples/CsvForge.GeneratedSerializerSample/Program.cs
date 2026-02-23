@@ -1,46 +1,31 @@
 using CsvForge;
-using CsvForge.Attributes;
+using CsvForge.Samples.Shared;
 
-var generatedRows = new[]
-{
-    new SampleOrder { Id = 1, Customer = "Ada" },
-    new SampleOrder { Id = 2, Customer = "Grace" }
-};
-
-var fallbackRows = new[]
-{
-    new FallbackOrder { Id = 1, Customer = "Ada" },
-    new FallbackOrder { Id = 2, Customer = "Grace" }
-};
+var generator = new SampleDataGenerator(seed: 202501);
 
 using var generatedWriter = new StringWriter();
-CsvWriter.Write(generatedRows, generatedWriter, new CsvOptions
+CsvWriter.Write(generator.GenerateGeneratedRows(count: 5), generatedWriter, new CsvOptions
 {
     IncludeHeader = true,
     EnableRuntimeMetadataFallback = false
 });
 
 using var fallbackWriter = new StringWriter();
-CsvWriter.Write(fallbackRows, fallbackWriter, new CsvOptions
+CsvWriter.Write(generator.GenerateFallbackRows(count: 5), fallbackWriter, new CsvOptions
 {
     IncludeHeader = true,
     EnableRuntimeMetadataFallback = true
 });
 
+var asyncRows = new List<GeneratedSampleRow>();
+await foreach (var row in generator.GenerateGeneratedRowsAsync(count: 3))
+{
+    asyncRows.Add(row);
+}
+
 Console.WriteLine("Source-generated serializer output:");
 Console.WriteLine(generatedWriter.ToString());
 Console.WriteLine("Runtime fallback serializer output:");
 Console.WriteLine(fallbackWriter.ToString());
-
-[CsvSerializable]
-public partial class SampleOrder
-{
-    public int Id { get; init; }
-    public string Customer { get; init; } = string.Empty;
-}
-
-public sealed class FallbackOrder
-{
-    public int Id { get; init; }
-    public string Customer { get; init; } = string.Empty;
-}
+Console.WriteLine($"Async sample rows generated: {asyncRows.Count}");
+Console.WriteLine($"Large dataset iterator prepared for {generator.GenerateLargeDataset(100_000).Count()} rows.");

@@ -12,6 +12,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsvForge.SourceGenerator", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsvForge.GeneratedSerializerSample", "samples\CsvForge.GeneratedSerializerSample\CsvForge.GeneratedSerializerSample.csproj", "{D2C09A55-4A87-4E75-9331-502632AEB90D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CsvForge.Samples.Shared", "samples\CsvForge.Samples.Shared\CsvForge.Samples.Shared.csproj", "{F3B89529-3A85-438D-A7C5-79D798A22280}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -38,6 +40,10 @@ Global
 		{D2C09A55-4A87-4E75-9331-502632AEB90D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D2C09A55-4A87-4E75-9331-502632AEB90D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D2C09A55-4A87-4E75-9331-502632AEB90D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F3B89529-3A85-438D-A7C5-79D798A22280}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F3B89529-3A85-438D-A7C5-79D798A22280}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F3B89529-3A85-438D-A7C5-79D798A22280}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F3B89529-3A85-438D-A7C5-79D798A22280}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
