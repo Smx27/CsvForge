@@ -13,6 +13,8 @@ public sealed class SampleDataGenerator
 
     public IEnumerable<GeneratedSampleRow> GenerateGeneratedRows(int count)
     {
+        EnsureNonNegative(count);
+
         var random = new Random(_seed);
         for (var index = 0; index < count; index++)
         {
@@ -22,6 +24,8 @@ public sealed class SampleDataGenerator
 
     public IEnumerable<FallbackSampleRow> GenerateFallbackRows(int count)
     {
+        EnsureNonNegative(count);
+
         var random = new Random(_seed);
         for (var index = 0; index < count; index++)
         {
@@ -33,6 +37,8 @@ public sealed class SampleDataGenerator
         int count,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        EnsureNonNegative(count);
+
         var random = new Random(_seed);
         for (var index = 0; index < count; index++)
         {
@@ -50,6 +56,8 @@ public sealed class SampleDataGenerator
         int count,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        EnsureNonNegative(count);
+
         var random = new Random(_seed);
         for (var index = 0; index < count; index++)
         {
@@ -65,14 +73,30 @@ public sealed class SampleDataGenerator
 
     public IEnumerable<GeneratedSampleRow> GenerateLargeDataset(int count = 100_000)
     {
-        if (count is < 100_000 or > 1_000_000)
-        {
-            throw new ArgumentOutOfRangeException(nameof(count), "count must be between 100,000 and 1,000,000.");
-        }
+        EnsureLargeDatasetCount(count);
 
         var random = new Random(_seed);
         for (var index = 0; index < count; index++)
         {
+            yield return CreateGeneratedRow(index, random);
+        }
+    }
+
+    public async IAsyncEnumerable<GeneratedSampleRow> GenerateLargeDatasetAsync(
+        int count = 100_000,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        EnsureLargeDatasetCount(count);
+
+        var random = new Random(_seed);
+        for (var index = 0; index < count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (index > 0 && index % 10_000 == 0)
+            {
+                await Task.Yield();
+            }
+
             yield return CreateGeneratedRow(index, random);
         }
     }
@@ -111,5 +135,21 @@ public sealed class SampleDataGenerator
             InternalNote = $"Internal-{index + 1}",
             IgnoredField = random.Next()
         };
+    }
+
+    private static void EnsureNonNegative(int count)
+    {
+        if (count < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), "count must be zero or greater.");
+        }
+    }
+
+    private static void EnsureLargeDatasetCount(int count)
+    {
+        if (count is < 100_000 or > 1_000_000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), "count must be between 100,000 and 1,000,000.");
+        }
     }
 }
