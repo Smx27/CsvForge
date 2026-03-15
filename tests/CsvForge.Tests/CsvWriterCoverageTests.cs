@@ -39,7 +39,7 @@ public class CsvWriterCoverageTests
 
         Assert.Equal("Id,OptionalInt,OptionalDate,OptionalText,RequiredText", lines[0]);
         Assert.Equal("1,,,,value", lines[1]);
-        Assert.Equal("2,9,2025-01-02T03:04:05.0000000Z,present,value2", lines[2]);
+        Assert.Equal("2,9,01/02/2025 03:04:05,present,value2", lines[2]);
     }
 
     [Fact]

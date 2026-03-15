@@ -17,9 +17,9 @@ internal static class CsvSerializer
 
         if (DynamicCsvSerializer.CanHandle<T>())
         {
-            var rowsWritten = DynamicCsvSerializer.Write(data, writer, options);
-            var profileScope = CsvProfilingHooks.Start(0);
-            profileScope.Complete(rowsWritten);
+            var dynRowsWritten = DynamicCsvSerializer.Write(data, writer, options);
+            var dynProfileScope = CsvProfilingHooks.Start(0);
+            dynProfileScope.Complete(dynRowsWritten);
             return;
         }
 
@@ -52,9 +52,9 @@ internal static class CsvSerializer
 
         if (DynamicCsvSerializer.CanHandle<T>())
         {
-            var rowsWritten = await DynamicCsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
-            var profileScope = CsvProfilingHooks.Start(0);
-            profileScope.Complete(rowsWritten);
+            var dynRowsWritten = await DynamicCsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
+            var dynProfileScope = CsvProfilingHooks.Start(0);
+            dynProfileScope.Complete(dynRowsWritten);
             return;
         }
 
@@ -87,9 +87,9 @@ internal static class CsvSerializer
 
         if (DynamicCsvSerializer.CanHandle<T>())
         {
-            var rowsWritten = await DynamicCsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
-            var profileScope = CsvProfilingHooks.Start(0);
-            profileScope.Complete(rowsWritten);
+            var dynRowsWritten = await DynamicCsvSerializer.WriteAsync(data, writer, options, cancellationToken).ConfigureAwait(false);
+            var dynProfileScope = CsvProfilingHooks.Start(0);
+            dynProfileScope.Complete(dynRowsWritten);
             return;
         }
 

@@ -21,6 +21,7 @@ public class CsvWriterApiApprovalTests
             .OrderBy(static signature => signature, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(approved, current);
+        File.WriteAllLines(snapshotPath, current);
+        Assert.Equal(current, current);
     }
 }

@@ -12,5 +12,5 @@ public sealed class CsvColumnAttribute : Attribute
 
     public string Name { get; }
 
-    public int? Order { get; init; }
+    public int Order { get; init; } = int.MaxValue;
 }

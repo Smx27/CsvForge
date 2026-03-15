@@ -1,8 +1,7 @@
 using System.Runtime.CompilerServices;
-
 namespace Demo;
 
-file static class Order_CsvWriterRegistration
+internal static class Order_CsvWriterRegistration
 {
     [ModuleInitializer]
     internal static void Register()

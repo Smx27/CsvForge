@@ -173,6 +173,7 @@ internal static class CsvValueFormatter
 
     private static bool NeedsEscaping(ReadOnlySpan<char> value, char delimiter)
     {
-        return value.IndexOfAny(delimiter, '"', '\r', '\n') >= 0;
+        ReadOnlySpan<char> chars = stackalloc char[] { delimiter, '"', '\r', '\n' };
+        return value.IndexOfAny(chars) >= 0;
     }
 }

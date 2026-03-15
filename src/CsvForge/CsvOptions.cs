@@ -45,7 +45,7 @@ public enum CsvCompressionMode
     Zip
 }
 
-public sealed class CsvOptions
+public sealed record CsvOptions
 {
 #if CSVFORGE_STRICT_MODE
     private const bool StrictModeDefault = true;
@@ -153,6 +153,11 @@ public sealed class CsvOptions
             {
                 normalized = normalized with { EmitUtf8Bom = true };
             }
+        }
+
+        if (streamOrFileTarget && normalized.EmitUtf8Bom && IsUtf8Encoding(normalized.Encoding))
+        {
+            normalized = normalized with { Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true) };
         }
 
         return normalized;

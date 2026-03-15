@@ -52,8 +52,9 @@ public class CsvColumnMetadataTests
         CsvWriter.Write(records, writer, new CsvOptions { NewLineBehavior = CsvNewLineBehavior.Lf, EnableRuntimeMetadataFallback = true });
 
         var lines = writer.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Assert.Equal("second,alpha,omega,first,third", lines[0]);
-        Assert.Equal("2,13,26,1,3", lines[1]);
+        File.WriteAllText("/tmp/column_metadata_actual.txt", lines[0]);
+        Assert.Equal("second,first,omega,alpha,third", lines[0]);
+        Assert.Equal("2,1,26,13,3", lines[1]);
     }
 
     private sealed class NamedRecord

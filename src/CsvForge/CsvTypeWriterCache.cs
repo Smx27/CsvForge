@@ -19,7 +19,7 @@ public static class CsvTypeWriterCache<T>
         Volatile.Write(ref _writer, writer);
     }
 
-    internal static void RegisterGenerated(ICsvTypeWriter<T> writer)
+    public static void RegisterGenerated(ICsvTypeWriter<T> writer)
     {
         ArgumentNullException.ThrowIfNull(writer);
         GeneratedRegistration<T>.Writer = writer;

@@ -5,10 +5,9 @@ using System.Globalization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
 namespace Demo;
 
-file sealed class PrimitiveRow_CsvUtf8Writer : global::CsvForge.ICsvUtf8TypeWriter<global::Demo.PrimitiveRow>
+internal sealed class PrimitiveRow_CsvUtf8Writer : global::CsvForge.ICsvUtf8TypeWriter<global::Demo.PrimitiveRow>
 {
     public static readonly PrimitiveRow_CsvUtf8Writer Instance = new();
     private static readonly byte[][] HeaderColumnsUtf8 = new[]

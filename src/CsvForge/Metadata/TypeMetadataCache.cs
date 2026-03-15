@@ -109,7 +109,7 @@ internal static class TypeMetadataCache
         return new ColumnDetails(
             property.Name,
             columnName,
-            csvAttribute?.Order,
+            csvAttribute?.Order == int.MaxValue ? null : csvAttribute?.Order,
             GetDeclarationOrder(property));
     }
 

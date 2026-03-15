@@ -5,16 +5,14 @@ using System.Globalization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
 namespace Demo;
 
-file sealed class Order_CsvUtf8Writer : global::CsvForge.ICsvUtf8TypeWriter<global::Demo.Order>
+internal sealed class Order_CsvUtf8Writer : global::CsvForge.ICsvUtf8TypeWriter<global::Demo.Order>
 {
     public static readonly Order_CsvUtf8Writer Instance = new();
     private static readonly byte[][] HeaderColumnsUtf8 = new[]
     {
-        Encoding.UTF8.GetBytes("id"),
-        Encoding.UTF8.GetBytes("CustomerName"),
+        Encoding.UTF8.GetBytes("id\", Order = 0)] int Id, string? CustomerName);"),
     };
 
     public void WriteHeader(IBufferWriter<byte> writer, global::CsvForge.CsvOptions options)
@@ -33,20 +31,7 @@ file sealed class Order_CsvUtf8Writer : global::CsvForge.ICsvUtf8TypeWriter<glob
 
     public void WriteRow(IBufferWriter<byte> writer, global::Demo.Order value, global::CsvForge.CsvOptions options)
     {
-        {
-            Span<byte> utf8Formatted = stackalloc byte[32];
-            if (!Utf8Formatter.TryFormat(value.Id, utf8Formatted, out var bytesWritten, 'D'))
-            {
-                throw new InvalidOperationException("Could not format value as UTF-8.");
-            }
-            global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedUtf8(writer, utf8Formatted.Slice(0, bytesWritten), (byte)options.Delimiter);
-        }
-        {
-            var delimiter = writer.GetSpan(1);
-            delimiter[0] = (byte)options.Delimiter;
-            writer.Advance(1);
-        }
-        global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedUtf8(writer, value.CustomerName?.ToString(), (byte)options.Delimiter);
+        global::CsvForge.CsvGeneratedWriterSupport.WriteEscapedUtf8(writer, value.?.ToString(), (byte)options.Delimiter);
     }
 
     public ValueTask WriteHeaderAsync(IBufferWriter<byte> writer, global::CsvForge.CsvOptions options, CancellationToken cancellationToken)

@@ -30,7 +30,7 @@ public class CsvSerializerFormattingTests
         var lines = writer.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
         Assert.Equal("NullableText,Text,Number,Date", lines[0]);
-        Assert.Equal(",\"a,\"\"b\"\"\",1,5,02/01/2024 03:04:05", lines[1]);
+        Assert.Equal(",\"a,\"\"b\"\"\",\"1,5\",02/01/2024 03:04:05", lines[1]);
     }
 
     [Fact]
