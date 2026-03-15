@@ -24,7 +24,7 @@ Thank you for helping improve CsvForge. This project is performance-critical inf
 ### Clone and build
 
 ```bash
-git clone https://github.com/your-org/CsvForge.git
+git clone https://github.com/Smx27/CsvForge.git
 cd CsvForge
 dotnet restore
 dotnet build CsvForge.sln -c Release

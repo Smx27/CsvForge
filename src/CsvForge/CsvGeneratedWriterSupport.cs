@@ -7,10 +7,20 @@ using System.Threading.Tasks;
 
 namespace CsvForge;
 
+/// <summary>
+/// Provides low-level text formatting support for source-generated CSV writers.
+/// </summary>
 public static class CsvGeneratedWriterSupport
 {
     private static readonly byte QuoteByte = (byte)'"';
 
+    /// <summary>
+    /// Writes a potentially escaped string to a text writer.
+    /// </summary>
+    /// <param name="writer">The target text writer.</param>
+    /// <param name="value">The value to write.</param>
+    /// <param name="delimiter">The column delimiter character.</param>
+    /// <param name="excelCompatibility">Whether to use Excel compatibility mode escaping.</param>
     public static void WriteEscaped(TextWriter writer, string? value, char delimiter, bool excelCompatibility = false)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -52,6 +62,13 @@ public static class CsvGeneratedWriterSupport
         writer.Write('"');
     }
 
+    /// <summary>
+    /// Writes a potentially escaped character span to a text writer.
+    /// </summary>
+    /// <param name="writer">The target text writer.</param>
+    /// <param name="value">The span of characters to write.</param>
+    /// <param name="delimiter">The column delimiter character.</param>
+    /// <param name="excelCompatibility">Whether to use Excel compatibility mode escaping.</param>
     public static void WriteEscaped(TextWriter writer, ReadOnlySpan<char> value, char delimiter, bool excelCompatibility = false)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -93,6 +110,15 @@ public static class CsvGeneratedWriterSupport
         writer.Write('"');
     }
 
+    /// <summary>
+    /// Asynchronously writes a potentially escaped string to a text writer.
+    /// </summary>
+    /// <param name="writer">The target text writer.</param>
+    /// <param name="value">The string to write.</param>
+    /// <param name="delimiter">The column delimiter character.</param>
+    /// <param name="cancellationToken">A cancellation token to observe.</param>
+    /// <param name="excelCompatibility">Whether to use Excel compatibility mode escaping.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static async ValueTask WriteEscapedAsync(TextWriter writer, string? value, char delimiter, CancellationToken cancellationToken, bool excelCompatibility = false)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -154,6 +180,13 @@ public static class CsvGeneratedWriterSupport
         return false;
     }
 
+    /// <summary>
+    /// Writes a potentially escaped string as UTF-8 bytes to a buffer writer.
+    /// </summary>
+    /// <param name="writer">The target buffer writer.</param>
+    /// <param name="value">The string to write.</param>
+    /// <param name="delimiter">The column delimiter byte.</param>
+    /// <param name="excelCompatibility">Whether to use Excel compatibility mode escaping.</param>
     public static void WriteEscapedUtf8(IBufferWriter<byte> writer, string? value, byte delimiter, bool excelCompatibility = false)
     {
         if (string.IsNullOrEmpty(value))
@@ -164,6 +197,13 @@ public static class CsvGeneratedWriterSupport
         WriteEscapedUtf8(writer, value.AsSpan(), delimiter, excelCompatibility);
     }
 
+    /// <summary>
+    /// Writes a potentially escaped character span as UTF-8 bytes to a buffer writer.
+    /// </summary>
+    /// <param name="writer">The target buffer writer.</param>
+    /// <param name="value">The span of characters to write.</param>
+    /// <param name="delimiter">The column delimiter byte.</param>
+    /// <param name="excelCompatibility">Whether to use Excel compatibility mode escaping.</param>
     public static void WriteEscapedUtf8(IBufferWriter<byte> writer, ReadOnlySpan<char> value, byte delimiter, bool excelCompatibility = false)
     {
         if (value.IsEmpty)
@@ -176,6 +216,12 @@ public static class CsvGeneratedWriterSupport
         WriteEscapedUtf8(writer, bytes, delimiter);
     }
 
+    /// <summary>
+    /// Writes a potentially escaped byte span to a UTF-8 buffer writer.
+    /// </summary>
+    /// <param name="writer">The target buffer writer.</param>
+    /// <param name="value">The span of bytes to write.</param>
+    /// <param name="delimiter">The column delimiter byte.</param>
     public static void WriteEscapedUtf8(IBufferWriter<byte> writer, ReadOnlySpan<byte> value, byte delimiter)
     {
         if (value.IsEmpty)

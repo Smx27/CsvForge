@@ -4,13 +4,28 @@ using System.Text;
 
 namespace CsvForge;
 
+/// <summary>
+/// Specifies the line ending behavior for CSV rows.
+/// </summary>
 public enum CsvNewLineBehavior
 {
+    /// <summary>
+    /// Uses the default line ending for the current environment.
+    /// </summary>
     Environment,
+    /// <summary>
+    /// Uses Line Feed (LF) as the line ending.
+    /// </summary>
     Lf,
+    /// <summary>
+    /// Uses Carriage Return + Line Feed (CRLF) as the line ending.
+    /// </summary>
     CrLf
 }
 
+/// <summary>
+/// Specifies the behavior for handling heterogeneous headers (rows with varying shapes).
+/// </summary>
 public enum CsvHeterogeneousHeaderBehavior
 {
     /// <summary>
@@ -25,6 +40,9 @@ public enum CsvHeterogeneousHeaderBehavior
     FirstShapeLock
 }
 
+/// <summary>
+/// Specifies the behavior for handling union headers with asynchronous data sources.
+/// </summary>
 public enum CsvUnionAsyncBehavior
 {
     /// <summary>
@@ -38,13 +56,28 @@ public enum CsvUnionAsyncBehavior
     FirstShapeLock
 }
 
+/// <summary>
+/// Specifies the compression mode for CSV output.
+/// </summary>
 public enum CsvCompressionMode
 {
+    /// <summary>
+    /// No compression is applied.
+    /// </summary>
     None,
+    /// <summary>
+    /// The CSV output is compressed using GZip.
+    /// </summary>
     Gzip,
+    /// <summary>
+    /// The CSV output is compressed using Zip (single-entry archive).
+    /// </summary>
     Zip
 }
 
+/// <summary>
+/// Configuration options for CSV writing operations.
+/// </summary>
 public sealed record CsvOptions
 {
 #if CSVFORGE_STRICT_MODE
@@ -53,20 +86,44 @@ public sealed record CsvOptions
     private const bool StrictModeDefault = false;
 #endif
 
+    /// <summary>
+    /// Gets the default CSV options.
+    /// </summary>
     public static CsvOptions Default { get; } = new();
 
+    /// <summary>
+    /// Gets or sets the character used to separate fields in CSV rows.
+    /// </summary>
     public char Delimiter { get; init; } = ',';
 
+    /// <summary>
+    /// Gets or sets the text encoding for writer operations targeting streams.
+    /// </summary>
     public Encoding Encoding { get; init; } = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
+    /// <summary>
+    /// Controls whether a header row is emitted.
+    /// </summary>
     public bool IncludeHeader { get; init; } = true;
 
+    /// <summary>
+    /// Adjusts the file I/O buffer payload size in bytes.
+    /// </summary>
     public int BufferSize { get; init; } = 16 * 1024;
 
+    /// <summary>
+    /// Adjusts the internal character writer buffer size.
+    /// </summary>
     public int StreamWriterBufferSize { get; init; } = 16 * 1024;
 
+    /// <summary>
+    /// Defines the format provider to apply when serializing primitive types.
+    /// </summary>
     public IFormatProvider FormatProvider { get; init; } = CultureInfo.InvariantCulture;
 
+    /// <summary>
+    /// Controls line ending behavior for row termination.
+    /// </summary>
     public CsvNewLineBehavior NewLineBehavior { get; init; } = CsvNewLineBehavior.Environment;
 
     /// <summary>

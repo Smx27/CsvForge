@@ -11,6 +11,9 @@ using CsvForge.Checkpoint;
 
 namespace CsvForge;
 
+/// <summary>
+/// Provides methods for writing CSV data.
+/// </summary>
 public static class CsvWriter
 {
     /// <summary>
@@ -37,6 +40,12 @@ public static class CsvWriter
         WriteToFile(data, path, options);
     }
 
+    /// <summary>
+    /// Writes rows to a stream.
+    /// </summary>
+    /// <param name="data">The data items to write.</param>
+    /// <param name="stream">The output stream.</param>
+    /// <param name="options">The formatting options.</param>
     public static void Write<T>(IEnumerable<T> data, Stream stream, CsvOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -47,6 +56,12 @@ public static class CsvWriter
         WriteToPreparedStream(data, output.Stream, options);
     }
 
+    /// <summary>
+    /// Writes rows to a text writer.
+    /// </summary>
+    /// <param name="data">The data items to write.</param>
+    /// <param name="writer">The output text writer.</param>
+    /// <param name="options">The formatting options.</param>
     public static void Write<T>(IEnumerable<T> data, TextWriter writer, CsvOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -63,6 +78,12 @@ public static class CsvWriter
         writer.Flush();
     }
 
+    /// <summary>
+    /// Writes rows to a buffer writer.
+    /// </summary>
+    /// <param name="data">The data items to write.</param>
+    /// <param name="bufferWriter">The output buffer writer.</param>
+    /// <param name="options">The formatting options.</param>
     public static void Write<T>(IEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(bufferWriter);
@@ -71,6 +92,13 @@ public static class CsvWriter
         Utf8CsvWriter.Write(data, bufferWriter, options);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a buffer writer.
+    /// </summary>
+    /// <param name="data">The async data items to write.</param>
+    /// <param name="bufferWriter">The output buffer writer.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
     public static void Write<T>(IAsyncEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(bufferWriter);
@@ -79,6 +107,12 @@ public static class CsvWriter
         Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken).GetAwaiter().GetResult();
     }
 
+    /// <summary>
+    /// Writes rows to a pipe writer.
+    /// </summary>
+    /// <param name="data">The data items to write.</param>
+    /// <param name="writer">The output pipe writer.</param>
+    /// <param name="options">The formatting options.</param>
     public static void Write<T>(IEnumerable<T> data, PipeWriter writer, CsvOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -88,6 +122,13 @@ public static class CsvWriter
         writer.FlushAsync().GetAwaiter().GetResult();
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a pipe writer.
+    /// </summary>
+    /// <param name="data">The async data items to write.</param>
+    /// <param name="writer">The output pipe writer.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
     public static void Write<T>(IAsyncEnumerable<T> data, PipeWriter writer, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -98,6 +139,13 @@ public static class CsvWriter
     }
 
 
+    /// <summary>
+    /// Asynchronously writes rows with checkpointing.
+    /// </summary>
+    /// <param name="data">The async data items to write.</param>
+    /// <param name="path">The file path.</param>
+    /// <param name="options">The checkpoint options.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static async Task WriteWithCheckpointAsync<T>(IAsyncEnumerable<T> data, string path, CsvCheckpointOptions options)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -169,26 +217,66 @@ public static class CsvWriter
         batch.Clear();
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a file.
+    /// </summary>
+    /// <param name="data">The data items to write.</param>
+    /// <param name="filePath">The file path.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static Task WriteToFileAsync<T>(IEnumerable<T> data, string filePath, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         return WriteEnumerableToPathAsync(data, filePath, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a file.
+    /// </summary>
+    /// <param name="data">The async data items to write.</param>
+    /// <param name="filePath">The file path.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static Task WriteToFileAsync<T>(IAsyncEnumerable<T> data, string filePath, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         return WriteAsyncEnumerableToPathAsync(data, filePath, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a file.
+    /// </summary>
+    /// <param name="data">The data items to write.</param>
+    /// <param name="path">The file path.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static Task WriteAsync<T>(IEnumerable<T> data, string path, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         return WriteToFileAsync(data, path, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a stream.
+    /// </summary>
+    /// <param name="data">The data items to write.</param>
+    /// <param name="stream">The output stream.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static Task WriteAsync<T>(IEnumerable<T> data, Stream stream, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         return WriteEnumerableToStreamAsync(data, stream, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a text writer.
+    /// </summary>
+    /// <param name="data">The data items to write.</param>
+    /// <param name="writer">The output text writer.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static Task WriteAsync<T>(IEnumerable<T> data, TextWriter writer, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -197,6 +285,14 @@ public static class CsvWriter
         return Utf16CsvWriter.WriteAsync(data, writer, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a buffer writer.
+    /// </summary>
+    /// <param name="data">The data items to write.</param>
+    /// <param name="bufferWriter">The output buffer writer.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static Task WriteAsync<T>(IEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(bufferWriter);
@@ -205,6 +301,14 @@ public static class CsvWriter
         return Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a pipe writer.
+    /// </summary>
+    /// <param name="data">The data items to write.</param>
+    /// <param name="writer">The output pipe writer.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static async Task WriteAsync<T>(IEnumerable<T> data, PipeWriter writer, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -214,16 +318,40 @@ public static class CsvWriter
         await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a file.
+    /// </summary>
+    /// <param name="data">The async stream of data items to write.</param>
+    /// <param name="path">The output file path.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">A token that may be used to cancel the write operation.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static Task WriteAsync<T>(IAsyncEnumerable<T> data, string path, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         return WriteToFileAsync(data, path, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a stream.
+    /// </summary>
+    /// <param name="data">The async stream of data items to write.</param>
+    /// <param name="stream">The output stream.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">A token that may be used to cancel the write operation.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static Task WriteAsync<T>(IAsyncEnumerable<T> data, Stream stream, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         return WriteAsyncEnumerableToStreamAsync(data, stream, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a text writer.
+    /// </summary>
+    /// <param name="data">The async stream of data items to write.</param>
+    /// <param name="writer">The output text writer.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">A token that may be used to cancel the write operation.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static Task WriteAsync<T>(IAsyncEnumerable<T> data, TextWriter writer, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -232,6 +360,14 @@ public static class CsvWriter
         return Utf16CsvWriter.WriteAsync(data, writer, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a buffer writer.
+    /// </summary>
+    /// <param name="data">The async stream of data items to write.</param>
+    /// <param name="bufferWriter">The output buffer writer.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">A token that may be used to cancel the write operation.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static Task WriteAsync<T>(IAsyncEnumerable<T> data, IBufferWriter<byte> bufferWriter, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(bufferWriter);
@@ -240,6 +376,14 @@ public static class CsvWriter
         return Utf8CsvWriter.WriteAsync(data, bufferWriter, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Asynchronously writes rows to a pipe writer.
+    /// </summary>
+    /// <param name="data">The async stream of data items to write.</param>
+    /// <param name="writer">The output pipe writer.</param>
+    /// <param name="options">The formatting options.</param>
+    /// <param name="cancellationToken">A token that may be used to cancel the write operation.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     public static async Task WriteAsync<T>(IAsyncEnumerable<T> data, PipeWriter writer, CsvOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(writer);

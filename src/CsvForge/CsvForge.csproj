@@ -1,9 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net10.0</TargetFrameworks>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>CsvForge</PackageId>
+    <Version>1.0.0</Version>
     <Authors>CsvForge Contributors</Authors>
     <Description>High-performance CSV serialization and deserialization library for .NET applications.</Description>
     <PackageTags>csv;serialization;performance</PackageTags>
@@ -11,6 +12,8 @@
     <RepositoryUrl>https://github.com/smx27/CsvForge</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>

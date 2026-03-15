@@ -4,8 +4,8 @@
 
 [![NuGet](https://img.shields.io/nuget/v/CsvForge.svg)](#)
 [![Downloads](https://img.shields.io/nuget/dt/CsvForge.svg)](#)
-[![Build](https://img.shields.io/github/actions/workflow/status/your-org/CsvForge/ci.yml?branch=main)](#)
-[![License](https://img.shields.io/github/license/your-org/CsvForge)](#)
+[![Build](https://img.shields.io/github/actions/workflow/status/Smx27/CsvForge/ci.yml?branch=main)](#)
+[![License](https://img.shields.io/github/license/Smx27/CsvForge)](#)
 [![Docs](https://img.shields.io/badge/docs-online-brightgreen)](#)
 
 CsvForge combines a **hybrid UTF-8/UTF-16 writer**, **Roslyn Source Generator**, **checkpointed export orchestration**, and **streaming compression** to deliver predictable, high-throughput CSV pipelines for APIs, services, batch jobs, and data platforms.
@@ -156,7 +156,7 @@ Sample guide: [`samples/README.md`](samples/README.md)
 - [ ] Wider benchmark matrix (.NET runtimes, ARM64/x64, Linux/Windows)
 - [ ] Production diagnostics package (events/metrics dashboards)
 
-See open work in [GitHub Issues](https://github.com/your-org/CsvForge/issues).
+See open work in [GitHub Issues](https://github.com/Smx27/CsvForge/issues).
 
 ---
 
