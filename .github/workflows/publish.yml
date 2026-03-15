@@ -1,0 +1,39 @@
+name: Publish NuGet Package
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Pack NuGet package
+      run: dotnet pack src/CsvForge/CsvForge.csproj --configuration Release --output ./nupkg --no-build
+
+    - name: Publish to GitHub Packages
+      run: |
+        dotnet nuget add source --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+        dotnet nuget push "./nupkg/*.nupkg" --source "github" --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
+
+    - name: Publish to NuGet.org
+      run: dotnet nuget push "./nupkg/CsvForge.*.nupkg" --source nuget.org --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate
+      if: ${{ secrets.NUGET_API_KEY != '' }}
